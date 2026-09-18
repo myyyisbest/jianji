@@ -1,6 +1,12 @@
 # 依赖
 node_modules/
 
+# 运行时数据（笔记存档、S3 密钥配置，切勿入库）
+data/
+
+# 打包产物
+dist/
+
 # 环境变量
 .env
 .env.local
@@ -16,3 +22,13 @@ Thumbs.db
 # 编辑器
 .vscode/
 .idea/
+
+# 构建产物（由 npm run build:cm 从 build/cm6-entry.js 生成）
+vendor/
+
+# AI 工具工作目录（会话缓存、记忆日志，属本地环境）
+.workbuddy/
+.mimosa/
+
+# 临时调试产物（截图 / 探测脚本 / 隔离数据）
+.tmp-*

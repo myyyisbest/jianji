@@ -3,9 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>素笺 · 简洁云端笔记</title>
-  <meta name="description" content="一款简洁风格的云端笔记应用，支持 S3 同步">
-  <link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="%23d97757"/><path d="M8 8.5h8M8 12h8M8 15.5h5" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>'>
+  <title>简记 · 笔记与待办</title>
+  <meta name="description" content="简记：Markdown 即写即渲染的本地笔记 + 清单化待办，支持 WebDAV / S3 云同步">
+  <!-- 图标由 scripts/make-icon.py 生成，改图形时重跑该脚本。
+       SVG 优先：矢量在任何 DPI 下都清晰；PNG 作为老浏览器兜底 -->
+  <link rel="icon" type="image/svg+xml" href="icon/jianji-icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="icon/jianji-icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icon/jianji-icon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon/jianji-icon-180.png">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -13,7 +18,7 @@
   <div class="app">
     <!-- ===== 顶栏 ===== -->
     <header class="topbar">
-      <button class="icon-btn menu-btn" id="menuBtn" title="笔记列表" aria-label="打开笔记列表">
+      <button class="icon-btn menu-btn" id="menuBtn" title="列表" aria-label="打开列表">
         <svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg>
       </button>
       <button class="icon-btn collapse-btn" id="collapseBtn" title="收起 / 展开列表" aria-label="收起或展开列表">
@@ -22,14 +27,16 @@
 
       <div class="brand">
         <span class="brand-logo" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="#d97757"/><path d="M8 8.5h8M8 12h8M8 15.5h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <!-- 与 icon/jianji-icon.ico 同源的「签字笔」标记：
+               坐标由 scripts/make-icon.py 的同一组几何参数算出，改图标时两边一起改 -->
+          <svg viewBox="0 0 24 24"><rect x="0" y="0" width="24" height="24" rx="5.4" fill="#21201c"/><path d="M15.39 4.97 L13.47 7.61 L9.76 13.04 L9.15 14.62 L6.41 19.57 L6.53 19.65 L10.39 15.52 L11.70 14.45 L15.72 9.25 L17.64 6.60 Z" fill="#faf9f5"/><circle cx="16.56" cy="5.72" r="1.39" fill="#faf9f5"/><path d="M13.45 7.59 L15.74 9.26 L15.62 9.44 L13.32 7.77 Z" fill="#21201c"/><path d="M9.65 15.10 L9.78 15.19 L8.96 16.32 L8.83 16.22 Z" fill="#21201c" opacity=".58"/><circle cx="7.03" cy="20.39" r="1.20" fill="#d97757"/></svg>
         </span>
-        <span class="brand-name">素笺</span>
+        <span class="brand-name">简记</span>
       </div>
 
       <div class="search">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.6" y1="16.6" x2="21" y2="21"/></svg>
-        <input id="searchInput" type="text" placeholder="搜索笔记…" autocomplete="off" spellcheck="false">
+        <input id="searchInput" type="text" placeholder="搜索笔记与任务…" autocomplete="off" spellcheck="false">
         <kbd>Ctrl K</kbd>
       </div>
 
@@ -42,10 +49,28 @@
           <svg class="ico-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><g><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="5.3" y1="5.3" x2="7" y2="7"/><line x1="17" y1="17" x2="18.7" y2="18.7"/><line x1="18.7" y1="5.3" x2="17" y2="7"/><line x1="7" y1="17" x2="5.3" y2="18.7"/></g></svg>
           <svg class="ico-moon" viewBox="0 0 24 24"><path d="M20.6 13.4A8.4 8.4 0 1 1 10.6 3.4a6.8 6.8 0 0 0 10 10z"/></svg>
         </button>
-        <button class="btn primary" id="newBtn">
-          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>新建笔记</span>
-        </button>
+
+        <div class="new-menu" id="newMenu">
+          <button class="btn primary" id="newBtn" aria-haspopup="true" aria-expanded="false">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span id="newBtnLabel">新建</span>
+            <svg class="caret" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>
+          </button>
+          <div class="new-pop" id="newPop" hidden>
+            <button data-new="note">
+              <svg viewBox="0 0 24 24"><path d="M13.5 3.5H7A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h10A1.5 1.5 0 0 0 18.5 19V8.5z"/><path d="M13.5 3.5V8.5h5"/><path d="M9 12.5h6"/><path d="M9 16h4"/></svg>
+              <span><b>新建笔记</b><i>Markdown 即写即渲染</i></span>
+            </button>
+            <button data-new="task">
+              <svg viewBox="0 0 24 24"><path d="M3.6 6.9 5.3 8.6l2.6-2.8"/><path d="M3.6 12.4 5.3 14.1l2.6-2.8"/><path d="M3.6 17.9 5.3 19.6l2.6-2.8"/><path d="M11.5 7h9"/><path d="M11.5 12.5h9"/><path d="M11.5 18h5.5"/></svg>
+              <span><b>新建任务</b><i>可设清单、截止日、备注</i></span>
+            </button>
+            <button data-new="list">
+              <svg viewBox="0 0 24 24"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h3.6l1.7 2.2H19a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 19 18.2H5a1.5 1.5 0 0 1-1.5-1.5z"/></svg>
+              <span><b>新建清单</b><i>给任务分组归档</i></span>
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -53,6 +78,21 @@
     <div class="workspace">
       <aside class="sidebar" id="sidebar">
         <div class="side-head">
+          <div class="mode-switch" id="modeSwitch">
+            <button class="mode-btn active" data-mode="notes">
+              <svg viewBox="0 0 24 24"><path d="M13.5 3.5H7A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h10A1.5 1.5 0 0 0 18.5 19V8.5z"/><path d="M13.5 3.5V8.5h5"/><path d="M9 12.5h6"/><path d="M9 16h4"/></svg>
+              <span>笔记</span>
+            </button>
+            <button class="mode-btn" data-mode="tasks">
+              <svg viewBox="0 0 24 24"><path d="M3.6 6.9 5.3 8.6l2.6-2.8"/><path d="M3.6 12.4 5.3 14.1l2.6-2.8"/><path d="M3.6 17.9 5.3 19.6l2.6-2.8"/><path d="M11.5 7h9"/><path d="M11.5 12.5h9"/><path d="M11.5 18h5.5"/></svg>
+              <span>任务</span>
+              <em class="mode-count" id="taskBadge"></em>
+            </button>
+          </div>
+        </div>
+
+        <!-- 笔记面板 -->
+        <div class="side-panel" id="panelNotes">
           <div class="filters" id="filters">
             <button class="filter active" data-filter="all">全部</button>
             <button class="filter" data-filter="fav">收藏</button>
@@ -65,9 +105,22 @@
               <option value="title">按标题</option>
             </select>
           </div>
+          <div class="tag-bar" id="tagBar"></div>
+          <div class="note-list" id="noteList"></div>
         </div>
-        <div class="tag-bar" id="tagBar"></div>
-        <div class="note-list" id="noteList"></div>
+
+        <!-- 任务面板 -->
+        <div class="side-panel" id="panelTasks" hidden>
+          <div class="filters" id="taskFilters">
+            <button class="filter active" data-tfilter="all">全部</button>
+            <button class="filter" data-tfilter="today">今天</button>
+            <button class="filter" data-tfilter="star">重要</button>
+            <button class="filter" data-tfilter="week">未来 7 天</button>
+            <button class="filter" data-tfilter="done">已完成</button>
+          </div>
+          <div class="task-lists" id="taskLists"></div>
+        </div>
+
         <div class="side-foot" id="sideFoot"></div>
       </aside>
 
@@ -75,17 +128,17 @@
         <!-- 空状态 -->
         <div class="editor-empty" id="editorEmpty">
           <div class="empty-logo">
-            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5" fill="#d97757"/><path d="M8 8.5h8M8 12h8M8 15.5h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24"><rect x="0" y="0" width="24" height="24" rx="5.4" fill="#21201c"/><path d="M15.39 4.97 L13.47 7.61 L9.76 13.04 L9.15 14.62 L6.41 19.57 L6.53 19.65 L10.39 15.52 L11.70 14.45 L15.72 9.25 L17.64 6.60 Z" fill="#faf9f5"/><circle cx="16.56" cy="5.72" r="1.39" fill="#faf9f5"/><path d="M13.45 7.59 L15.74 9.26 L15.62 9.44 L13.32 7.77 Z" fill="#21201c"/><path d="M9.65 15.10 L9.78 15.19 L8.96 16.32 L8.83 16.22 Z" fill="#21201c" opacity=".58"/><circle cx="7.03" cy="20.39" r="1.20" fill="#d97757"/></svg>
           </div>
           <h2>落笔，即刻成笺</h2>
-          <p>在左侧选择一篇笔记，或点击「新建笔记」开始书写</p>
+          <p>左侧选择一篇笔记，或点击右上角「新建」开始书写</p>
           <div class="empty-keys">
             <span><kbd>Ctrl</kbd><kbd>K</kbd> 搜索</span>
             <span><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>N</kbd> 新建</span>
           </div>
         </div>
 
-        <!-- 编辑器 -->
+        <!-- 笔记编辑器 -->
         <div class="editor-body" id="editorBody" hidden>
           <div class="editor-top">
             <button class="icon-btn back-btn" id="backBtn" title="返回列表" aria-label="返回列表">
@@ -114,13 +167,13 @@
             <div class="meta-stats">
               <span id="wordCount">0 字</span>
               <span class="dot">·</span>
-              <span id="saveStatus" class="status saved">已保存</span>
+              <span id="saveStatus" class="status saved">本地已保存</span>
               <span class="dot">·</span>
               <span id="updatedTime"></span>
             </div>
           </div>
 
-          <div class="toolbar" id="toolbar">
+          <div class="toolbar" id="noteToolbar">
             <div class="tool-group">
               <button class="tool" data-cmd="undo" title="撤销 (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14.5 4.5 10 9 5.5"/><path d="M4.5 10H14a5.5 5.5 0 0 1 0 11h-3"/></svg></button>
               <button class="tool" data-cmd="redo" title="重做 (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24"><path d="m15 14.5 4.5-4.5L15 5.5"/><path d="M19.5 10H10a5.5 5.5 0 0 0 0 11h3"/></svg></button>
@@ -129,32 +182,122 @@
             <div class="tool-group">
               <button class="tool tool-txt" data-block="h1" title="一级标题">H1</button>
               <button class="tool tool-txt" data-block="h2" title="二级标题">H2</button>
+              <button class="tool tool-txt" data-block="h3" title="三级标题">H3</button>
+              <button class="tool tool-txt" data-block="h4" title="四级标题">H4</button>
               <button class="tool tool-txt" data-block="p" title="正文">正文</button>
             </div>
             <div class="tool-sep"></div>
             <div class="tool-group">
-              <button class="tool tool-txt strong" data-cmd="bold" title="加粗">B</button>
-              <button class="tool tool-txt italic" data-cmd="italic" title="斜体">I</button>
-              <button class="tool tool-txt underline" data-cmd="underline" title="下划线">U</button>
-              <button class="tool tool-txt strike" data-cmd="strikeThrough" title="删除线">S</button>
-              <button class="tool" data-cmd="hilite" title="高亮"><svg viewBox="0 0 24 24"><path d="m14 4.5 5.5 5.5-9 9a2 2 0 0 1-1.4.6H5v-4.1a2 2 0 0 1 .6-1.4l8.4-9.6z"/><line x1="12.5" y1="6" x2="18" y2="11.5"/><line x1="4" y1="21.5" x2="20" y2="21.5"/></svg></button>
+              <button class="tool tool-txt strong" data-cmd="bold" title="加粗 (Ctrl+B)">B</button>
+              <button class="tool tool-txt italic" data-cmd="italic" title="斜体 (Ctrl+I)">I</button>
+              <button class="tool tool-txt strike" data-cmd="strike" title="删除线">S</button>
+              <button class="tool" data-cmd="mark" title="高亮"><svg viewBox="0 0 24 24"><path d="m14 4.5 5.5 5.5-9 9a2 2 0 0 1-1.4.6H5v-4.1a2 2 0 0 1 .6-1.4l8.4-9.6z"/><line x1="12.5" y1="6" x2="18" y2="11.5"/><line x1="4" y1="21.5" x2="20" y2="21.5"/></svg></button>
+              <button class="tool" data-cmd="code" title="行内代码"><svg viewBox="0 0 24 24"><polyline points="9 8 5 12 9 16"/><polyline points="15 8 19 12 15 16"/></svg></button>
+              <button class="tool" data-cmd="link" title="链接"><svg viewBox="0 0 24 24"><path d="M10 13.5a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7L11.5 6.3"/><path d="M14 10.5a4 4 0 0 0-5.7 0l-2.8 2.8a4 4 0 0 0 5.7 5.7l1.3-1.3"/></svg></button>
             </div>
             <div class="tool-sep"></div>
             <div class="tool-group">
-              <button class="tool" data-cmd="insertUnorderedList" title="无序列表"><svg viewBox="0 0 24 24"><line x1="9.5" y1="6" x2="20" y2="6"/><line x1="9.5" y1="12" x2="20" y2="12"/><line x1="9.5" y1="18" x2="20" y2="18"/><circle cx="4.8" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.8" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.8" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg></button>
-              <button class="tool" data-cmd="insertOrderedList" title="有序列表"><svg viewBox="0 0 24 24"><line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><text x="3" y="8.4" font-size="7.5" fill="currentColor" stroke="none">1</text><text x="3" y="14.6" font-size="7.5" fill="currentColor" stroke="none">2</text><text x="3" y="20.8" font-size="7.5" fill="currentColor" stroke="none">3</text></svg></button>
-              <button class="tool" data-act="checklist" title="待办清单"><svg viewBox="0 0 24 24"><line x1="10.5" y1="6" x2="20" y2="6"/><line x1="10.5" y1="12" x2="20" y2="12"/><line x1="10.5" y1="18" x2="20" y2="18"/><path d="m3 5.6 1.6 1.6 2.6-2.7"/><path d="m3 11.6 1.6 1.6 2.6-2.7"/></svg></button>
+              <button class="tool" data-cmd="ul" title="无序列表"><svg viewBox="0 0 24 24"><line x1="9.5" y1="6" x2="20" y2="6"/><line x1="9.5" y1="12" x2="20" y2="12"/><line x1="9.5" y1="18" x2="20" y2="18"/><circle cx="4.8" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.8" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.8" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg></button>
+              <button class="tool" data-cmd="ol" title="有序列表"><svg viewBox="0 0 24 24"><line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><text x="3" y="8.4" font-size="7.5" fill="currentColor" stroke="none">1</text><text x="3" y="14.6" font-size="7.5" fill="currentColor" stroke="none">2</text><text x="3" y="20.8" font-size="7.5" fill="currentColor" stroke="none">3</text></svg></button>
+              <button class="tool" data-cmd="task" title="待办清单"><svg viewBox="0 0 24 24"><line x1="10.5" y1="6" x2="20" y2="6"/><line x1="10.5" y1="12" x2="20" y2="12"/><line x1="10.5" y1="18" x2="20" y2="18"/><path d="m3 5.6 1.6 1.6 2.6-2.7"/><path d="m3 11.6 1.6 1.6 2.6-2.7"/></svg></button>
             </div>
             <div class="tool-sep"></div>
             <div class="tool-group">
-              <button class="tool" data-block="blockquote" title="引用"><svg viewBox="0 0 24 24"><path d="M10.5 7.5H6.8v4h2.5c0 2.4-1 3.9-3 4.6l.8 1.7c3-.9 4.4-3.1 4.4-6.6V8.5a1 1 0 0 0-1-1z" fill="currentColor" stroke="none"/><path d="M19.5 7.5h-3.7v4h2.5c0 2.4-1 3.9-3 4.6l.8 1.7c3-.9 4.4-3.1 4.4-6.6V8.5a1 1 0 0 0-1-1z" fill="currentColor" stroke="none"/></svg></button>
-              <button class="tool" data-block="pre" title="代码块"><svg viewBox="0 0 24 24"><polyline points="8.5 7 3.5 12 8.5 17"/><polyline points="15.5 7 20.5 12 15.5 17"/></svg></button>
-              <button class="tool tool-txt" data-cmd="removeFormat" title="清除格式">Tx</button>
+              <button class="tool" data-cmd="quote" title="引用"><svg viewBox="0 0 24 24"><path d="M10.5 7.5H6.8v4h2.5c0 2.4-1 3.9-3 4.6l.8 1.7c3-.9 4.4-3.1 4.4-6.6V8.5a1 1 0 0 0-1-1z" fill="currentColor" stroke="none"/><path d="M19.5 7.5h-3.7v4h2.5c0 2.4-1 3.9-3 4.6l.8 1.7c3-.9 4.4-3.1 4.4-6.6V8.5a1 1 0 0 0-1-1z" fill="currentColor" stroke="none"/></svg></button>
+              <button class="tool" data-cmd="fence" title="代码块"><svg viewBox="0 0 24 24"><polyline points="8.5 7 3.5 12 8.5 17"/><polyline points="15.5 7 20.5 12 15.5 17"/></svg></button>
+              <button class="tool" data-cmd="table" title="插入表格"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><line x1="3.5" y1="9.5" x2="20.5" y2="9.5"/><line x1="3.5" y1="15" x2="20.5" y2="15"/><line x1="9.7" y1="4.5" x2="9.7" y2="19.5"/><line x1="14.3" y1="4.5" x2="14.3" y2="19.5"/></svg></button>
+              <button class="tool" data-cmd="hr" title="分割线"><svg viewBox="0 0 24 24"><line x1="3.5" y1="12" x2="20.5" y2="12"/><circle cx="7" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="17" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></button>
+              <button class="tool tool-txt" data-cmd="clear" title="清除格式">Tx</button>
             </div>
           </div>
 
           <div class="page-scroll">
-            <div id="contentInput" class="page" contenteditable="true" spellcheck="false" data-placeholder="开始书写，灵感即刻凝结…"></div>
+            <div id="noteCm" class="cm-host page"></div>
+          </div>
+        </div>
+
+        <!-- 任务详情 -->
+        <div class="editor-body task-body" id="taskBody" hidden>
+          <div class="task-head">
+            <div class="th-line">
+              <button class="icon-btn back-btn" id="taskBackBtn" title="返回列表" aria-label="返回列表">
+                <svg viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>
+              </button>
+              <span class="big-check" id="taskDone" role="checkbox" aria-checked="false" tabindex="0" title="标记完成">
+                <svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              </span>
+              <input id="taskTitle" type="text" placeholder="任务标题" autocomplete="off" spellcheck="false">
+              <div class="editor-actions">
+                <button class="icon-btn" id="taskStarBtn" title="标记重要">
+                  <svg viewBox="0 0 24 24"><path d="m12 3.8 2.4 5 5.5.8-4 3.9.9 5.5-4.8-2.6-4.8 2.6.9-5.5-4-3.9 5.5-.8 2.4-5z"/></svg>
+                </button>
+                <button class="icon-btn danger" id="taskDelBtn" title="删除任务">
+                  <svg viewBox="0 0 24 24"><path d="M4.5 6.5h15"/><path d="M9.5 6.5v-2h5v2"/><path d="M6.5 6.5 7.4 20.5h9.2l.9-14"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="task-metabar">
+              <label class="mt-chip" title="所属清单">
+                <i class="mt-swatch" id="taskListSwatch"></i>
+                <select id="taskListSel"></select>
+              </label>
+              <!-- 截止日期：input 是「真控件」，不藏、也不铺透明垫片。
+                   早前那版把它透明铺满 chip 当点击垫片，结果弹出日历再按 Esc 取消后，
+                   原生段脱离激活态，后续方向键/数字键被全部丢弃（用户报的「无法维护」）。
+                   input 自带的日历图标在 Edge 里是 11px 的小方块，和全站 13px 线性图标不搭，
+                   所以把原生图标透明化、改用统一的日历图标；它只是装饰（pointer-events:none），
+                   开日历靠 input 上的 click → showPicker()，所以藏掉图标不会丢入口。
+                   空值时的 yyyy/mm/日 是浏览器内部画的伪元素，改不了文案（::before 对 date
+                   input 无效，实测 content:none），所以叠一个自己的占位 span。 -->
+              <label class="mt-chip mt-date" title="截止日期">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="3"/><line x1="3.5" y1="10" x2="20.5" y2="10"/><line x1="8" y1="3.5" x2="8" y2="7"/><line x1="16" y1="3.5" x2="16" y2="7"/></svg>
+                <span class="mt-date-wrap">
+                  <input id="taskDue" type="date" title="截止日期">
+                  <span class="mt-date-ph" id="taskDuePh" aria-hidden="true">设置日期</span>
+                </span>
+              </label>
+              <!-- 清空截止日：原生 date input 的空值态没法靠键盘退格清掉，
+                   必须给一个显式出口，否则设错了日期就只能改不能撤 -->
+              <button class="mt-clear" id="taskDueClear" type="button" title="清除截止日期" aria-label="清除截止日期" hidden>
+                <svg viewBox="0 0 24 24"><path d="M7 7l10 10"/><path d="M17 7 7 17"/></svg>
+              </button>
+              <label class="mt-chip" title="优先级">
+                <svg viewBox="0 0 24 24"><path d="M7 18.5V13.5"/><path d="M12 18.5V9.5"/><path d="M17 18.5V5.5"/></svg>
+                <select id="taskPriority" title="优先级">
+                  <option value="0">低优先</option>
+                  <option value="1">普通</option>
+                  <option value="2">高优先</option>
+                </select>
+              </label>
+              <span class="tm-spacer"></span>
+              <span class="tm-date" id="taskTime"></span>
+            </div>
+          </div>
+
+          <div class="task-note-head">
+            <span class="tnh-icon">
+              <svg viewBox="0 0 24 24"><path d="M5.5 5.5h13v13h-13z"/><path d="M8.5 9.5h7"/><path d="M8.5 13h4.5"/></svg>
+            </span>
+            <span class="tnh-title">备注</span>
+            <span class="hint">Markdown 即写即渲染</span>
+          </div>
+
+          <div class="task-toolbar" id="taskToolbar">
+            <button class="tool tool-txt strong" data-cmd="bold" title="加粗">B</button>
+            <button class="tool tool-txt italic" data-cmd="italic" title="斜体">I</button>
+            <button class="tool tool-txt strike" data-cmd="strike" title="删除线">S</button>
+            <button class="tool" data-cmd="code" title="行内代码"><svg viewBox="0 0 24 24"><polyline points="9 8 5 12 9 16"/><polyline points="15 8 19 12 15 16"/></svg></button>
+            <div class="tool-sep"></div>
+            <button class="tool" data-cmd="ul" title="无序列表"><svg viewBox="0 0 24 24"><line x1="9.5" y1="6" x2="20" y2="6"/><line x1="9.5" y1="12" x2="20" y2="12"/><line x1="9.5" y1="18" x2="20" y2="18"/><circle cx="4.8" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.8" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.8" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg></button>
+            <button class="tool" data-cmd="task" title="待办清单"><svg viewBox="0 0 24 24"><line x1="10.5" y1="6" x2="20" y2="6"/><line x1="10.5" y1="12" x2="20" y2="12"/><line x1="10.5" y1="18" x2="20" y2="18"/><path d="m3 5.6 1.6 1.6 2.6-2.7"/><path d="m3 11.6 1.6 1.6 2.6-2.7"/></svg></button>
+            <div class="tool-sep"></div>
+            <button class="tool" data-cmd="table" title="插入表格"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><line x1="3.5" y1="9.5" x2="20.5" y2="9.5"/><line x1="9.7" y1="4.5" x2="9.7" y2="19.5"/><line x1="14.3" y1="4.5" x2="14.3" y2="19.5"/></svg></button>
+            <button class="tool" data-cmd="fence" title="代码块"><svg viewBox="0 0 24 24"><polyline points="8.5 7 3.5 12 8.5 17"/><polyline points="15.5 7 20.5 12 15.5 17"/></svg></button>
+          </div>
+
+          <div class="page-scroll task-scroll">
+            <div id="taskCm" class="cm-host"></div>
           </div>
         </div>
       </section>
@@ -173,32 +316,55 @@
       <div class="modal-body">
         <div class="backend-status" id="backendStatus"></div>
 
-        <h4 class="section-title">S3 云端存储</h4>
-        <p class="section-hint">兼容 AWS S3 / Cloudflare R2 / MinIO 等支持 SigV4 签名的 S3 服务。保存后，笔记存档（JSON）会同步到你指定的对象。</p>
-
-        <label class="field"><span>Endpoint</span>
-          <input id="cfgEndpoint" placeholder="https://s3.us-east-1.amazonaws.com" autocomplete="off" spellcheck="false">
-        </label>
-        <div class="field-row">
-          <label class="field"><span>Region</span>
-            <input id="cfgRegion" placeholder="us-east-1" autocomplete="off" spellcheck="false">
-          </label>
-          <label class="field"><span>Bucket</span>
-            <input id="cfgBucket" placeholder="my-notes" autocomplete="off" spellcheck="false">
-          </label>
+        <h4 class="section-title">云端同步</h4>
+        <div class="sync-type" id="syncType">
+          <button class="sync-type-btn active" data-type="s3">S3 对象存储</button>
+          <button class="sync-type-btn" data-type="webdav">WebDAV</button>
         </div>
-        <label class="field"><span>Access Key ID</span>
-          <input id="cfgAccessKey" autocomplete="off" spellcheck="false">
-        </label>
-        <label class="field"><span>Secret Access Key</span>
-          <input id="cfgSecret" type="password" autocomplete="new-password">
-        </label>
-        <div class="field-row">
+
+        <div id="cfgS3">
+          <p class="section-hint">兼容 AWS S3 / Cloudflare R2 / MinIO 等支持 SigV4 签名的 S3 服务。保存后，笔记与任务存档（JSON）会同步到你指定的对象。</p>
+          <label class="field"><span>Endpoint</span>
+            <input id="cfgEndpoint" placeholder="https://s3.us-east-1.amazonaws.com" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="field-row">
+            <label class="field"><span>Region</span>
+              <input id="cfgRegion" placeholder="us-east-1" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field"><span>Bucket</span>
+              <input id="cfgBucket" placeholder="my-notes" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+          <label class="field"><span>Access Key ID</span>
+            <input id="cfgAccessKey" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field"><span>Secret Access Key</span>
+            <input id="cfgSecret" type="password" autocomplete="new-password">
+          </label>
           <label class="field"><span>对象名</span>
             <input id="cfgObject" placeholder="notes.json" autocomplete="off" spellcheck="false">
           </label>
-          <label class="check-field"><input type="checkbox" id="cfgAutoSync"><span>保存即上传</span></label>
         </div>
+
+        <div id="cfgWebdav" hidden>
+          <p class="section-hint">兼容坚果云、Nextcloud、群晖 WebDAV 等标准服务。密码建议使用「应用密码」而非账号主密码。</p>
+          <label class="field"><span>WebDAV 地址</span>
+            <input id="cfgWdEndpoint" placeholder="https://dav.jianguoyun.com/dav/" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="field-row">
+            <label class="field"><span>用户名</span>
+              <input id="cfgWdUser" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field"><span>密码 / 应用密码</span>
+              <input id="cfgWdPass" type="password" autocomplete="new-password">
+            </label>
+          </div>
+          <label class="field"><span>存档路径</span>
+            <input id="cfgWdPath" placeholder="/jianji/notes.json" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+
+        <label class="check-field"><input type="checkbox" id="cfgAutoSync"><span>保存即上传</span></label>
         <label class="check-field"><input type="checkbox" id="cfgAutoPull"><span>多端自动同步（启动时与每分钟自动合并云端变更，删除与偏好同步传播）</span></label>
 
         <div class="modal-actions">
@@ -208,7 +374,7 @@
           <button class="btn accent" id="cfgPull">从云端合并</button>
         </div>
         <div class="test-result" id="cfgTestResult" hidden></div>
-        <p class="section-hint warn">「从云端合并」按笔记级合并云端与本地的变更（较新修改胜出，删除与偏好同样传播），合并结果自动回传云端，多端保持一致。</p>
+        <p class="section-hint warn">「从云端合并」按条合并云端与本地的变更（较新修改胜出，删除与偏好同样传播），合并结果自动回传云端，多端保持一致。</p>
       </div>
     </div>
   </div>
@@ -216,7 +382,8 @@
   <div class="scrim" id="scrim" hidden></div>
   <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-  <noscript><p style="text-align:center;padding:2rem">需要启用 JavaScript 才能使用素笺。</p></noscript>
+  <noscript><p style="text-align:center;padding:2rem">需要启用 JavaScript 才能使用简记。</p></noscript>
+  <script src="vendor/cm6.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

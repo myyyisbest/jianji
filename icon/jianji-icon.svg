@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- 简记 · 签字笔标记（由 scripts/make-icon.py 生成，勿手改） -->
+  <rect x="0" y="0" width="24" height="24" rx="5.4" fill="#21201c"/>
+  <path d="M15.39 4.97 L13.47 7.61 L9.76 13.04 L9.15 14.62 L6.41 19.57 L6.53 19.65 L10.39 15.52 L11.70 14.45 L15.72 9.25 L17.64 6.60 Z" fill="#faf9f5"/>
+  <circle cx="16.56" cy="5.72" r="1.39" fill="#faf9f5"/>
+  <path d="M13.45 7.59 L15.74 9.26 L15.62 9.44 L13.32 7.77 Z" fill="#21201c"/>
+  <path d="M9.65 15.10 L9.78 15.19 L8.96 16.32 L8.83 16.22 Z" fill="#7a776e" opacity=".58"/>
+  <circle cx="7.03" cy="20.39" r="1.20" fill="#d97757"/>
+</svg>

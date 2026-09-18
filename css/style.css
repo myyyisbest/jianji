@@ -1,5 +1,5 @@
 /* ============================================================
-   素笺 · 简洁风格（暖米白 / 暖深色）
+   简记 · 简洁风格（暖米白 / 暖深色）
    ============================================================ */
 
 :root {
@@ -105,11 +105,13 @@ kbd {
 
 h1, h2, h3 { font-family: ui-serif, Georgia, "Songti SC", Simsun, serif; }
 
-/* ---------- 布局 ---------- */
+/* ---------- 布局 ----------
+   外壳保持流式填满窗口。曾用过 max-width:1400px + margin auto 居中，
+   窗口一最大化（≥1400px）左右就各空出 250px+ 的死区，白扔三分之一屏幕。
+   宽屏下真正需要限宽的是「正文纸张」本身（.page 已是 760px），
+   而不是整个应用外壳——侧栏贴边、列表随宽度伸展才符合桌面应用的观感。 */
 .app {
   height: 100dvh;
-  max-width: 1400px;
-  margin: 0 auto;
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -123,6 +125,8 @@ body.sidebar-collapsed .workspace { gap: 0; }
 .topbar {
   height: 58px;
   flex-shrink: 0;
+  position: relative;      /* 建立层叠上下文，保证「新建」下拉浮层压在编辑器之上 */
+  z-index: 30;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -333,9 +337,11 @@ html[data-theme="light"] .note-item::after { background-image: linear-gradient(1
 
 .ni-top { display: flex; align-items: center; gap: 6px; }
 .ni-flag { flex-shrink: 0; display: grid; place-items: center; }
-.ni-flag svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ni-flag svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .ni-flag.pin { color: var(--accent); }
+.ni-flag.pin svg { fill: var(--accent-weak); }
 .ni-flag.star { color: var(--star); }
+.ni-flag.star svg { fill: var(--star-weak); }
 
 .ni-title {
   flex: 1;
@@ -389,10 +395,20 @@ html[data-theme="light"] .note-item::after { background-image: linear-gradient(1
   border-top: 1px solid var(--border);
 }
 
-/* ---------- 编辑器 ---------- */
+/* ---------- 编辑器 ----------
+   宽度分三层，各管一段：
+     1. .editor 流式拉满（面板填满窗口）
+     2. .page 纸张「弹性」变宽 —— 上限 --doc-col，窄时随容器收缩，
+        不会在两侧积出大片空白
+     3. --measure 是真正的「文本栏宽」：只约束逐行阅读的正文，
+        纸张可以宽（表格 / 代码块受益），但一行字不会长到难以扫读
+   之前的问题：纸张被硬钉在 760px，编辑器 1230px 时左右各空 235px
+   （1920px 时各 395px）—— 就是截图里那两条空白带。 */
 .editor {
   flex: 1;
   min-width: 0;
+  --doc-col: 1100px;      /* 纸张最大宽度 */
+  --measure: 760px;       /* 正文文本栏最大宽度（阅读舒适区） */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -401,6 +417,24 @@ html[data-theme="light"] .note-item::after { background-image: linear-gradient(1
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-1);
   animation: rise-in .4s .1s var(--ease) both;
+}
+
+/* 头部三条（标题 / 元信息 / 工具栏）与纸张共栏。
+   纸张包在 .page-scroll 里，外层让出横向内边距，自身再 max-width: --doc-col 居中。
+   头部是 .page-scroll 的兄弟节点，拿不到那层 padding，所以：
+     max-width 取 --doc-col —— 宽屏下头部「外框」与纸张「外框」刚好重合，
+     再各自保留原有的 padding（标题 20 / 元信息 16 / 工具栏 16），
+     内容就落在纸张内侧、和纸张的 padding 一起构成视觉缩进。
+   实测口径：比「外框」而不是「内容沿」。头部的 padding 是设计的一部分，
+   它的边框盒本来就该比纸张宽——用内容沿去比会误判成「错位」。
+   窄屏下纸张被容器挤到小于 --doc-col，头部因为同为 width:100% 会一起铺满，
+   两边同步收缩，不会错开。 */
+.editor-top,
+.meta-row,
+.toolbar {
+  width: 100%;
+  max-width: var(--doc-col);
+  margin-inline: auto;
 }
 
 .editor-empty {
@@ -543,8 +577,12 @@ html[data-theme="dark"] .tool.active { color: #e79b7f; }
 /* ---------- 正文纸张 ---------- */
 .page-scroll { flex: 1; overflow-y: auto; padding: 14px 20px 24px; }
 
+/* 纸张用 width:100% + max-width 做「弹性」：
+   编辑器窄时随容器收缩，宽时长大到 --doc-col 为止。
+   这样面板里不会留下成片的空带。 */
 .page {
-  max-width: 760px;
+  width: 100%;
+  max-width: var(--doc-col);
   margin: 0 auto;
   min-height: 100%;
   padding: 28px 34px 40px;
@@ -556,6 +594,9 @@ html[data-theme="dark"] .tool.active { color: #e79b7f; }
   line-height: 1.85;
   word-break: break-word;
 }
+/* 注：正文的文本栏宽由 .page .cm-content 控制（见「CodeMirror 编辑区」一节）。
+   纸张内部的 p / h1 / table 都是 CM6 运行时生成的，不在静态 DOM 里，
+   所以这里不要再写 .page p / .page table 这类选择器——命中不到。 */
 html[data-theme="dark"] .page { background: #2a2a27; }
 
 .page:empty::before,
@@ -855,9 +896,12 @@ html.theme-fade *::before, html.theme-fade *::after {
 
   .editor-top { padding: 12px 12px 0; }
   .back-btn { display: grid; }
+  .task-head { padding: 12px 12px 0; }
   #titleInput { font-size: 20px; }
   .meta-row { padding: 8px 14px 0; }
   .meta-stats #updatedTime, .meta-stats .dot:last-of-type { display: none; }
+  /* 窄屏：.page-scroll 与纸张的横向内边距同步收紧，
+     头部三条保持 width:100% 一起铺满，两边不会错开 */
   .toolbar { padding: 8px 10px 0; }
   .page-scroll { padding: 10px 10px 18px; }
   .page { padding: 20px 18px 30px; }
@@ -865,4 +909,494 @@ html.theme-fade *::before, html.theme-fade *::after {
   .modal { border-radius: var(--r-lg); }
   .field-row { flex-direction: column; align-items: stretch; gap: 0; }
   .field-row .check-field { align-self: flex-start; margin-top: 2px; }
+}
+
+/* ============================================================
+   模式切换 · 新建下拉 · 任务模块 · CodeMirror 编辑区
+   ============================================================ */
+
+/* ---------- 侧栏模式切换 ---------- */
+.side-head { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px 12px 8px; }
+
+/* ---------- 模式切换 ---------- */
+.mode-switch {
+  position: relative;
+  display: flex; gap: 2px; padding: 3px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px;
+}
+.mode-btn {
+  position: relative; z-index: 1;
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 8px; border-radius: 8px; font-size: 13.5px; font-weight: 600;
+  color: var(--text-2); transition: color .22s var(--ease), background .22s var(--ease), box-shadow .22s var(--ease);
+}
+.mode-btn svg {
+  width: 16px; height: 16px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+  transition: transform .28s var(--ease);
+}
+.mode-btn:hover { color: var(--text-1); }
+.mode-btn:hover svg { transform: translateY(-.5px) scale(1.04); }
+.mode-btn.active { background: var(--surface); color: var(--text-1); box-shadow: var(--shadow-1); }
+.mode-btn.active svg { color: var(--accent); }
+.mode-count {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--accent-weak); color: var(--accent-strong);
+  font-size: 10.5px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums;
+  display: grid; place-items: center; line-height: 1;
+  transition: background .22s var(--ease), color .22s var(--ease);
+}
+.mode-btn.active .mode-count { background: var(--accent); color: #fff; }
+html[data-theme="dark"] .mode-count { color: #e79b7f; }
+html[data-theme="dark"] .mode-btn.active .mode-count { color: #fff; }
+.mode-count:empty { display: none; }
+
+.side-panel { display: flex; flex-direction: column; min-height: 0; overflow: auto; flex: 1; }
+
+/* ---------- 新建下拉 ---------- */
+.new-menu { position: relative; }
+.new-menu .btn svg.caret { width: 14px; height: 14px; opacity: .8; }
+.new-pop {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 60;
+  width: 246px; padding: 6px; border-radius: var(--r-md);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-2);
+  animation: pop-in .18s var(--ease) both;
+}
+@keyframes pop-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.new-pop button { display: flex; gap: 10px; width: 100%; padding: 9px 10px; border-radius: var(--r-sm); text-align: left; }
+.new-pop button:hover { background: var(--surface-2); }
+.new-pop svg { width: 18px; height: 18px; flex: none; margin-top: 2px; color: var(--accent); }
+.new-pop span { display: block; }
+.new-pop b { display: block; font-size: 13.5px; font-weight: 600; }
+.new-pop i { display: block; margin-top: 2px; font-size: 11.5px; font-style: normal; color: var(--text-3); }
+
+/* ---------- 同步类型切换 ---------- */
+.sync-type { display: flex; gap: 4px; padding: 3px; margin: 2px 0 10px; background: var(--surface-2); border-radius: 10px; }
+.sync-type-btn {
+  flex: 1; padding: 6px 8px; border-radius: 7px; font-size: 12.5px; font-weight: 600;
+  color: var(--text-2); transition: background .18s, color .18s;
+}
+.sync-type-btn.active { background: var(--surface); color: var(--text-1); box-shadow: var(--shadow-1); }
+
+/* ---------- 任务侧栏 ---------- */
+#taskFilters { padding: 0 12px 8px; flex-wrap: wrap; }
+
+.tk-quick {
+  display: flex; align-items: center; gap: 8px; margin: 2px 12px 12px;
+  padding: 8px 10px; border-radius: var(--r-md);
+  background: var(--surface); border: 1px solid var(--border);
+  transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+}
+.tk-quick:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.tk-plus { flex: none; display: grid; place-items: center; width: 16px; height: 16px; color: var(--text-3); }
+.tk-plus svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.tk-quick:focus-within .tk-plus { color: var(--accent); }
+.tk-quick input { flex: 1; min-width: 0; border: none; background: none; outline: none; font-size: 13.5px; }
+.tk-quick input::placeholder { color: var(--text-3); }
+
+.tk-group { margin-bottom: 4px; }
+.tk-group-head {
+  display: flex; align-items: center; gap: 7px; padding: 7px 12px;
+  cursor: pointer; user-select: none; border-radius: var(--r-sm);
+  transition: background .16s var(--ease);
+}
+.tk-group-head:hover { background: var(--surface-2); }
+.tk-caret {
+  display: grid; place-items: center; width: 16px; height: 16px; border-radius: 5px;
+  color: var(--text-3); transition: transform .22s var(--ease), color .18s var(--ease);
+}
+.tk-caret svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tk-group-head:hover .tk-caret { color: var(--text-2); }
+.tk-group:not(.collapsed) .tk-caret { transform: rotate(90deg); }
+
+.tk-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none; cursor: pointer; padding: 0;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px color-mix(in srgb, currentColor 12%, transparent);
+  transition: transform .18s var(--ease);
+}
+.tk-dot:hover { transform: scale(1.22); }
+.tk-name {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 650; letter-spacing: .2px;
+  color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tk-count {
+  font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums;
+  padding: 1px 6px; border-radius: 999px; background: var(--surface-2);
+  transition: background .16s var(--ease);
+}
+.tk-group-head:hover .tk-count { background: var(--surface-3); }
+.tk-ops { display: flex; gap: 1px; opacity: 0; transform: translateX(3px); transition: opacity .16s var(--ease), transform .16s var(--ease); }
+.tk-group-head:hover .tk-ops { opacity: 1; transform: none; }
+.tk-op { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--text-3); transition: background .15s var(--ease), color .15s var(--ease); }
+.tk-op:hover { background: var(--surface-3); color: var(--text-1); }
+.tk-op.danger:hover { background: var(--danger-weak); color: var(--danger); }
+.tk-op svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tk-rename {
+  flex: 1; min-width: 0; padding: 2px 6px; border-radius: 5px; font-size: 13px; font-weight: 600;
+  background: var(--surface); border: 1px solid var(--accent); outline: none; color: var(--text-1);
+}
+
+.tk-group-body { padding-left: 10px; }
+.tk-group.collapsed .tk-group-body { display: none; }
+.tk-empty { padding: 2px 10px 10px; font-size: 12px; color: var(--text-3); }
+
+.tk-item {
+  display: flex; align-items: flex-start; gap: 9px; padding: 7px 8px 7px 7px;
+  border-radius: var(--r-sm); cursor: pointer; position: relative;
+  transition: background .16s var(--ease);
+  animation: item-in .25s var(--ease) both;
+}
+@keyframes item-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.tk-item:hover { background: var(--surface-2); }
+.tk-item.active {
+  background: var(--accent-weak);
+  box-shadow: inset 2.5px 0 0 var(--accent);
+}
+.tk-item.active .tk-title { color: var(--accent-strong); }
+html[data-theme="dark"] .tk-item.active .tk-title { color: #e79b7f; }
+
+/* 勾选框：圆角方块 + 勾线渐显，与正文待办 widget 同一套语言 */
+.tk-check {
+  flex: none; width: 17px; height: 17px; margin-top: 1px; display: grid; place-items: center;
+  border: 1.6px solid var(--border-strong); border-radius: 5.5px; cursor: pointer;
+  transition: background .18s var(--ease), border-color .18s var(--ease), transform .18s var(--ease);
+}
+.tk-check svg {
+  width: 11px; height: 11px; color: #fff;
+  fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+  opacity: 0; transform: scale(.55); transition: opacity .18s var(--ease), transform .22s var(--ease);
+}
+.tk-check:hover { border-color: var(--accent); background: var(--accent-weak); }
+.tk-check:active { transform: scale(.88); }
+.tk-item.done .tk-check { background: var(--accent); border-color: var(--accent); }
+.tk-item.done .tk-check svg { opacity: 1; transform: none; }
+
+/* 右侧星标与标题首行对齐：行内 flex-start + 抵消 padding，避免多行标题时浮在中间 */
+.tk-main { flex: 1; min-width: 0; }
+.tk-title { font-size: 13.5px; line-height: 1.45; color: var(--text-1); word-break: break-word; transition: color .2s var(--ease); }
+.tk-title i { color: var(--text-3); font-style: normal; }
+.tk-item.done .tk-title { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+
+/* 副行：截止日 + 有备注标记，二者同一套 11.5px 灰度语言 */
+.tk-sub { display: flex; align-items: center; gap: 7px; margin-top: 4px; font-size: 11.5px; color: var(--text-3); }
+.tk-sub:empty { display: none; }
+.tk-due { font-variant-numeric: tabular-nums; }
+.tk-due.over { color: var(--danger); font-weight: 600; }
+.tk-due.due-today { color: var(--star); font-weight: 600; }
+/* 有备注：给一个极轻的底色块，让它在「今天 / 3 天后」这类强调文字旁边也站得住 */
+.tk-hasnote {
+  display: inline-grid; place-items: center; width: 16px; height: 16px;
+  border-radius: 4.5px; background: var(--surface-3); color: var(--text-2);
+}
+.tk-hasnote svg {
+  width: 11px; height: 11px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.tk-item.active .tk-hasnote { background: var(--surface); }
+
+/* 元信息条：chips 自身的 7px 内边距会让首个色点比标题右偏，
+   用负 margin 把「色点」拉回与标题同一左基准，整条元信息的视觉起点才对齐 */
+.task-metabar .mt-chip:first-child { margin-left: -7px; }
+
+.tk-star {
+  flex: none; width: 22px; height: 22px; display: grid; place-items: center;
+  /* 抵消 .tk-item 的 7px 上内边距，让 22px 的按钮与 13.5px 的标题首行视觉居中 */
+  margin-top: -3px;
+  border-radius: 6px; color: var(--text-3); opacity: 0;
+  transition: opacity .18s var(--ease), background .18s var(--ease), color .18s var(--ease);
+}
+.tk-star svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; transition: transform .2s var(--ease); }
+.tk-star:hover { background: var(--surface-3); color: var(--star); }
+.tk-star:active svg { transform: scale(.86); }
+.tk-item:hover .tk-star { opacity: .5; }
+.tk-star.on { opacity: 1; color: var(--star); }
+.tk-star.on:hover { background: var(--star-weak); }
+.tk-star.on svg { fill: var(--star); }
+/* 清单一向对齐：这两条合并了，见下方 .tk-group-head 的 .tk-star 覆盖 */
+.tk-group-head .tk-star { margin-top: 0; width: 24px; height: 24px; }
+.tk-group-head .tk-star svg { width: 15px; height: 15px; }
+
+.tk-item.done .tk-star { opacity: .35; }
+
+.tk-aggnote {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px 5px 26px; font-size: 11.5px; color: var(--text-3); cursor: pointer; border-radius: var(--r-sm);
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.tk-aggnote:hover { background: var(--surface-2); color: var(--text-2); }
+.tk-aggtitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; letter-spacing: .2px; }
+.tk-aggcnt { font-variant-numeric: tabular-nums; opacity: .8; }
+.tk-item.agg { margin-left: 12px; padding-left: 4px; }
+.tk-item.agg .tk-check {
+  border-radius: 4.5px; width: 15px; height: 15px; margin-top: 2px;
+}
+.tk-item.agg .tk-check svg { width: 10px; height: 10px; }
+.tk-item.agg .tk-title { font-size: 13px; }
+
+.tk-aggicon { display: inline-grid; place-items: center; flex: none; color: var(--text-3); }
+.tk-aggicon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- 任务详情 ---------- */
+/* 用 CSS 变量把「勾选框列宽」定下来，标题与元信息条共享同一左基准，不再靠魔法数字对齐。
+   变量必须挂在 .task-body 上：.task-head 只是 .task-note-head / .task-toolbar / .task-scroll
+   的兄弟节点，挂在它上面这些兄弟取不到值，padding-left 会静默失效 */
+.task-body {
+  --check-col: 24px;
+  --check-gap: 14px;
+  --text-inset: calc(var(--check-col) + var(--check-gap));
+}
+.task-head { padding: 16px 24px 0; }
+
+.th-line { display: flex; align-items: center; gap: var(--check-gap); }
+/* 返回按钮在桌面端隐藏（靠侧栏列表切换），窄屏才出现 */
+.th-line .back-btn { flex: none; }
+
+.big-check {
+  flex: none; width: var(--check-col); height: var(--check-col); display: grid; place-items: center; cursor: pointer; outline: none;
+  border: 2px solid var(--border-strong); border-radius: 8px;
+  transition: background .2s var(--ease), border-color .2s var(--ease), transform .16s var(--ease);
+}
+.big-check svg {
+  width: 14px; height: 14px; color: #fff;
+  fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+  opacity: 0; transform: scale(.5); transition: opacity .2s var(--ease), transform .24s var(--ease);
+}
+.big-check:hover { border-color: var(--accent); background: var(--accent-weak); }
+.big-check:active { transform: scale(.9); }
+.big-check:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+.big-check.on { background: var(--accent); border-color: var(--accent); }
+.big-check.on svg { opacity: 1; transform: none; }
+
+.task-body #taskTitle {
+  flex: 1; min-width: 0;
+  font-size: 20px; font-weight: 650; letter-spacing: -.01em; line-height: 1.35;
+  background: none; border: none; outline: none;
+  transition: color .25s var(--ease);
+}
+.task-body #taskTitle::placeholder { color: var(--text-3); font-weight: 500; }
+.task-body.is-done #taskTitle { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+
+/* 元信息：无边框、以图标 + 分隔点组织，避免一排"小方框"。
+   左基准与标题一致（勾选框列 + 间距），并且强制单行不换行——换行会让整个头部显得臃肿 */
+.task-metabar {
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  margin: 8px 0 0 var(--text-inset);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mt-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 7px; border-radius: 6px;
+  font-size: 12px; color: var(--text-2); white-space: nowrap;
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.mt-chip:hover { background: var(--surface-2); color: var(--text-1); }
+.mt-chip:focus-within { background: var(--surface-2); box-shadow: 0 0 0 2px var(--ring); }
+.mt-chip svg {
+  width: 13px; height: 13px; flex: none; color: var(--text-3);
+  fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+  transition: color .16s var(--ease);
+}
+.mt-chip:hover svg, .mt-chip:focus-within svg { color: var(--accent); }
+.mt-chip select, .mt-chip input {
+  border: none; background: none; outline: none; font-size: 12px; color: inherit;
+  cursor: pointer; max-width: 124px; font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 截止日期 ----------
+   <input type="date"> 必须是「真控件」，不能藏在透明垫片底下。
+   原因：一旦弹出日历再按 Esc 取消，原生控件的段会脱离激活态，
+   后续方向键 / 数字键会被静默丢弃（实测 2026-10-08 按 ArrowUp 毫无反应）；
+   而 Esc 被日历弹层自己吃掉，JS 收不到通知，无从补救。
+   这里做三件事：
+     1. 去边框背景、统一字号，让原生控件融进 chip；
+     2. 把自带的日历图标透明化（Edge 里它是 11px 的小方块，和全站 13px 线性图标不搭），
+        改用 label 里那个统一图标 —— 图标仅装饰，开日历靠 click → showPicker()；
+     3. 空值占位换成自己的文案。注意浏览器的 yyyy/mm/日 画在 shadow DOM 里，
+        实测 color:transparent / font-size:0 / display:none 全部无效，改不动。
+        所以 .mt-date-ph 用不透明底色把它「盖住」，而不是去跟它较劲。 */
+.mt-date input[type="date"] {
+  border: none; background: none; outline: none;
+  font-size: 12px; color: var(--text-1); font-variant-numeric: tabular-nums;
+  max-width: 128px; cursor: pointer;
+}
+.mt-date input[type="date"]:hover { color: var(--accent); }
+.mt-date input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; }
+.mt-date input[type="date"]::-webkit-datetime-edit { padding: 0; }
+
+.mt-date-wrap { position: relative; display: inline-flex; align-items: center; }
+.mt-date-ph {
+  position: absolute; left: 0; top: 0; bottom: 0; right: 0;   /* 盖满整个 input 文案区 */
+  display: inline-flex; align-items: center;
+  font-size: 12px; color: var(--text-3); white-space: nowrap;
+  background: var(--surface);             /* 不透明：用来遮住原生 yyyy/mm/日 */
+  pointer-events: none; transition: opacity .12s var(--ease);
+}
+/* 有值 / 聚焦 / 悬停时收起占位，露出原生日期 */
+.mt-date.has-due .mt-date-ph,
+.mt-date:focus-within .mt-date-ph { opacity: 0; }
+
+.mt-chip input[type="date"]::-webkit-inner-spin-button { display: none; }
+
+/* 清空截止日。原生 date input 没有「退格即清空」这回事，只能给显式按钮。
+   高度对齐 24px 的 chip，hover 才上色，避免常态抢视线。 */
+.mt-clear {
+  display: inline-grid; place-items: center; flex: none;
+  width: 22px; height: 22px; padding: 0; margin-left: -2px;
+  border: 0; border-radius: 6px; background: none; cursor: pointer;
+  color: var(--text-3);
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.mt-clear[hidden] { display: none; }
+.mt-clear:hover { background: var(--surface-2); color: var(--danger); }
+.mt-clear:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
+.mt-clear svg {
+  width: 11px; height: 11px;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;
+}
+.mt-swatch {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--accent);
+  transition: background .25s var(--ease);
+}
+html[data-theme="dark"] .mt-chip input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.8); }
+
+.tm-spacer { flex: 1; min-width: 8px; }
+/* 「创建于…」和 chips 同一字号，此前 11.5px 在这条单行里显得突兀 */
+.tm-date { font-size: 12px; color: var(--text-3); padding-right: 4px; white-space: nowrap; }
+
+/* 备注区标题 */
+.task-note-head {
+  display: flex; align-items: center; gap: 7px;
+  margin: 18px 24px 0; padding-left: var(--text-inset);
+  font-size: 12px; color: var(--text-2); font-weight: 650;
+}
+.tnh-icon { display: inline-grid; place-items: center; color: var(--text-3); }
+.tnh-icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tnh-title { letter-spacing: .3px; }
+.task-note-head .hint {
+  font-weight: 400; color: var(--text-3); font-size: 11.5px;
+  padding-left: 7px; margin-left: 1px; border-left: 1px solid var(--border);
+}
+/* 工具栏与备注正文落在标题的左基准上，整屏只有一条竖向对齐线。
+   实测：.task-toolbar / .task-scroll 的内容盒左沿都是 357（= .task-head 的 24px 内边距之后），
+   而基准线在 419，即 357 + 38（= --check-col + --check-gap）+ 24（.task-head 的 padding-left）。
+   所以这里用 calc(24px + var(--text-inset)) 让二者直接落到 419，
+   再把首个按钮 / .cm-line 自身的左内边距（8px / 6px）减掉，让「图标」「文字」而非盒子对齐。 */
+.task-toolbar {
+  display: flex; gap: 2px;
+  padding: 10px 24px 0 calc(24px + var(--text-inset) - 8px);
+}
+.task-scroll { padding: 4px 24px 24px calc(24px + var(--text-inset) - 6px); }
+.task-body .cm-content { font-size: 14.5px; line-height: 1.8; }
+.task-body .cm-host { min-height: 160px; }
+
+/* ---------- CodeMirror 编辑区 ---------- */
+.cm-host { min-height: 220px; }
+.cm-editor { background: transparent; }
+.cm-editor.cm-focused { outline: none !important; }
+.cm-scroller { font-family: inherit; }
+.cm-content {
+  padding: 0;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--text-1);
+  caret-color: var(--accent);
+}
+/* 文本栏宽：真正承载文字的是 .cm-content（p/h1/table 都由 CM6 在内部生成，
+   选择器 .page p 之类根本命中不到）。纸张可以宽，文字栏收在 --measure 内并居中，
+   宽屏下才不会一行字横跨 1000px 难以扫读。
+   .cm-content 是 CM6 的量测基准元素，只改 max-width + margin 是安全的：
+   CM6 依赖它的宽度做换行计算，设成确定值反而让换行更稳定。
+   表格 widget / 代码块用 :where 之外的选择器放行到全宽。 */
+.page .cm-content {
+  max-width: var(--measure);
+  margin-inline: auto;
+}
+/* 表格与代码块需要横向空间，突破文字栏 */
+.page .cm-content .cm-md-table-widget,
+.page .cm-content .cm-in-fence { max-width: none; }
+.cm-line { padding: 0 2px; }
+.cm-cursor, .cm-dropCursor { border-left-color: var(--accent); border-left-width: 2px; }
+.cm-activeLine { background: rgba(127, 127, 127, .05); border-radius: 5px; }
+.cm-selectionBackground, .cm-editor .cm-selectionBackground { background: var(--accent-weak) !important; }
+.cm-editor.cm-focused .cm-selectionBackground { background: rgba(217, 119, 87, .22) !important; }
+.cm-placeholder { color: var(--text-3); font-style: normal; }
+
+/* live preview：标题 */
+.cm-line.cm-md-h1 { font-size: 1.55em; font-weight: 700; line-height: 1.35; margin: .35em 0 .1em; letter-spacing: -.01em; }
+.cm-line.cm-md-h2 { font-size: 1.3em; font-weight: 700; line-height: 1.4; margin: .3em 0 .1em; }
+.cm-line.cm-md-h3 { font-size: 1.13em; font-weight: 650; line-height: 1.45; margin: .22em 0 .06em; }
+.cm-line.cm-md-h4 { font-size: 1.02em; font-weight: 650; color: var(--text-2); }
+.cm-line.cm-md-h5, .cm-line.cm-md-h6 { font-size: .96em; font-weight: 650; color: var(--text-3); }
+
+/* live preview：引用 */
+.cm-line.cm-md-quote { border-left: 3px solid var(--accent); padding-left: 12px; margin-left: -13px; color: var(--text-2); }
+
+/* live preview：行内样式 */
+.cm-md-strong { font-weight: 700; }
+.cm-md-em { font-style: italic; }
+.cm-md-strike { text-decoration: line-through; color: var(--text-3); }
+.cm-md-code {
+  padding: .12em .38em; border-radius: 5px; font-size: .88em;
+  background: var(--code-bg);
+  font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", Menlo, Consolas, monospace;
+}
+.cm-md-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+/* 任务勾选 widget */
+.cm-md-checkbox {
+  display: inline-block; width: 15px; height: 15px; vertical-align: -2px; margin-right: 2px;
+  border: 1.6px solid var(--border-strong); border-radius: 5px; cursor: pointer; position: relative;
+  transition: background .16s var(--ease), border-color .16s var(--ease), transform .16s var(--ease);
+}
+.cm-md-checkbox:hover { border-color: var(--accent); background: var(--accent-weak); }
+.cm-md-checkbox.checked { background: var(--accent); border-color: var(--accent); }
+.cm-md-checkbox.checked::before {
+  content: ''; position: absolute; left: 4.2px; top: 1.8px; width: 4px; height: 7.5px;
+  border: solid #fff; border-width: 0 1.8px 1.8px 0; transform: rotate(45deg);
+}
+
+/* 表格 widget */
+.cm-md-table { margin: .5em 0 .7em; overflow-x: auto; }
+.cm-md-table table { border-collapse: collapse; width: 100%; font-size: .94em; }
+.cm-md-table th, .cm-md-table td {
+  border: 1px solid var(--border-strong); padding: 6px 11px; text-align: left; min-width: 3em;
+}
+.cm-md-table th { background: var(--surface-2); font-weight: 650; }
+.cm-md-hr { height: 1px; background: var(--border-strong); margin: 1.1em 0; }
+
+/* 代码块（源码可视，给一点背景区分） */
+.cm-line.cm-in-fence { background: var(--code-bg); }
+
+/* 语法高亮 token */
+.cm-tok-keyword { color: #a36ccb; }
+.cm-tok-string { color: var(--ok); }
+.cm-tok-comment { color: var(--text-3); }
+.cm-tok-number { color: #c8874a; }
+.cm-tok-heading { font-weight: 700; }
+.cm-tok-strong { font-weight: 700; }
+.cm-tok-em { font-style: italic; }
+.cm-tok-strike { text-decoration: line-through; color: var(--text-3); }
+.cm-tok-link { color: var(--accent); }
+.cm-tok-url { color: var(--text-3); }
+.cm-tok-mono { font-family: "JetBrains Mono", "Fira Code", Consolas, monospace; }
+.cm-tok-markup { color: var(--text-3); }
+html[data-theme="dark"] .cm-tok-keyword { color: #c9a0e8; }
+html[data-theme="dark"] .cm-tok-string { color: #9ec47a; }
+html[data-theme="dark"] .cm-tok-number { color: #dda15e; }
+
+/* 工具栏 / 状态微调 */
+.tool-txt { min-width: 26px; }
+.meta-stats .status.cloud { color: var(--ok); }
+.meta-stats .status.saving { color: var(--text-3); }
+
+@media (max-width: 720px) {
+  .task-head { padding: 12px 14px 0; }
+  .task-metabar { margin-left: 0; }
+  .task-note-head { margin: 16px 14px 0; padding-left: 0; }
+  .task-toolbar { padding: 10px 14px 0; }
+  .task-scroll { padding: 4px 14px 20px; }
+  .task-note-head .hint { display: none; }
 }

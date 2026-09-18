@@ -1,0 +1,95 @@
+{
+  "name": "jianji",
+  "productName": "简记",
+  "version": "1.1.0",
+  "description": "简记 · 简洁笔记应用（Web / Electron 桌面双形态，支持 Markdown 与 S3 云同步）",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node scripts/start-electron.js",
+    "web": "node server.js",
+    "build:cm": "esbuild build/cm6-entry.js --bundle --format=iife --global-name=CM6 --minify --target=es2020 --outfile=vendor/cm6.js",
+    "mock-s3": "node scripts/mock-s3.js",
+    "test:due": "node scripts/regression-due-date.js",
+    "test:layout": "node scripts/regression-layout.js",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.5",
+    "@codemirror/view": "^6.43.12",
+    "@lezer/common": "^1.5.2",
+    "@lezer/highlight": "^1.2.3",
+    "@lezer/markdown": "^1.7.2",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.63.0"
+  },
+  "build": {
+    "appId": "com.jianji.notes",
+    "productName": "简记",
+    "icon": "icon/jianji-icon-512.png",
+    "files": [
+      "electron/",
+      "server.js",
+      "index.html",
+      "css/",
+      "js/",
+      "vendor/",
+      "icon/"
+    ],
+    "extraResources": [
+      {
+        "from": "icon/jianji-icon-256.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "icon/jianji-icon.ico",
+        "to": "icon.ico"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon/jianji-icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "简记",
+      "installerIcon": "icon/jianji-icon.ico",
+      "uninstallerIcon": "icon/jianji-icon.ico",
+      "installerHeaderIcon": "icon/jianji-icon.ico",
+      "unicode": true,
+      "artifactName": "jianji-${version}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "jianji-${version}-portable.${ext}"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "icon/jianji-icon-512.png"
+    },
+    "linux": {
+      "icon": "icon/jianji-icon-512.png",
+      "category": "Office"
+    }
+  }
+}
