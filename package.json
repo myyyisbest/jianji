@@ -140,12 +140,31 @@
         }
       ],
       "artifactName": "jianji-${version}-mac-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "icon/jianji-tray-32-light.png",
+          "to": "jianji-tray-32-light.png"
+        },
+        {
+          "from": "icon/jianji-tray-32-dark.png",
+          "to": "jianji-tray-32-dark.png"
+        }
+      ],
       "identity": null,
       "gatekeeperAssess": false
     },
     "linux": {
       "icon": "icon/jianji-icon-512.png",
-      "category": "Office"
+      "category": "Office",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "jianji-${version}.${ext}"
     }
   }
 }

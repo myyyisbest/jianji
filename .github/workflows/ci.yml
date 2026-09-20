@@ -1,17 +1,33 @@
-name: 回归测试
+name: 质量门禁
 
 on:
   push:
-    branches: [main, dev]
+    # release/** 必须在这里 —— 之前的配置只盯 main / dev，
+    # 而 Mac 打包这条线一直开在 release/macos-build 上，等于全程没跑过回归。
+    branches: [main, dev, 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, dev]
+  # 允许在 Actions 页面手动跑一次，方便排查「到底是不是环境问题」
+  workflow_dispatch:
+
+# 同一分支连推多次时取消上一次未跑完的运行，省 runner 额度。
+# 注意 group 里带 ref：不同分支互不干扰。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# CI 只需要读代码。显式收敛权限，避免默认令牌权限过宽。
+permissions:
+  contents: read
 
 jobs:
+  # ── 端到端回归 ────────────────────────────────────────────────
   regression:
     name: 回归套件（91 条断言）
     # Windows 镜像自带 Edge，scripts/lib/browser.js 的默认路径正好命中，
     # 不需要额外下载浏览器（playwright-core 本身也不带浏览器）。
     runs-on: windows-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
       # 只需要 playwright-core。--ignore-scripts 跳过 electron 的二进制下载，
       # 否则光装依赖就要好几分钟，而本轮用例根本用不到 electron。
@@ -30,3 +47,57 @@ jobs:
         env:
           # CI 没有交互桌面，必须无头。本地仍默认有头，方便肉眼复核排版。
           JIANJI_HEADLESS: '1'
+
+      # 回归挂了会把中间态截图留在 .tmp-*.png（已被 gitignore）。
+      # 不捞出来的话，在 CI 上只能对着日志猜是哪一步错位。
+      - name: 失败时留存截图
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-screenshots
+          path: .tmp-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ── 静态检查 ──────────────────────────────────────────────────
+  lint:
+    name: 静态检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --ignore-scripts
+
+      # 项目无 ESLint（有意为之：零运行时依赖、原生 JS）。
+      # 但语法错误不该等到回归跑到一半才暴露，node --check 覆盖全部 JS 入口。
+      - name: 语法检查
+        run: |
+          files=$(ls server.js js/*.js electron/*.js scripts/*.js scripts/lib/*.js build/*.js)
+          for f in $files; do
+            node --check "$f"
+          done
+          echo "已检查 $(echo "$files" | wc -l) 个文件"
+
+      # CONTRIBUTING.md 第 2 条硬规则是「不要手改 vendor/cm6.js」，
+      # 但此前没有任何机制兜住它 —— 手改了也照样能合进 main。
+      # 这里重打一次产物再比对，把「源码与产物必须同源」变成可执行的约束。
+      - name: 准备 esbuild 二进制
+        # --ignore-scripts 跳过了 esbuild 的 postinstall（install.js 会校验平台二进制）。
+        # 二进制本体来自 optionalDependencies（@esbuild/<platform>），npm rebuild 只补校验。
+        run: npm rebuild esbuild
+
+      - name: 校验 vendor/cm6.js 与源码同源
+        run: |
+          npm run build:cm
+          if ! git diff --exit-code -- vendor/cm6.js; then
+            echo "::error::vendor/cm6.js 与 build/cm6-entry.js 不同源。请本地跑 npm run build:cm 后提交产物。"
+            exit 1
+          fi

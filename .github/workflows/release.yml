@@ -3,19 +3,99 @@ name: 打包发布
 on:
   push:
     tags: ['v*']
-  # 手动触发：用来试打包，不会发布。产物在 Actions 运行页的 Artifacts 里下载。
+  # 手动触发：只打包不发布，产物在本次运行页的 Artifacts 里下载。
   workflow_dispatch:
 
+# 创建 Release、上传产物都需要写权限。
 permissions:
   contents: write
 
+# 发布不允许被打断，也不允许同一个标签并发跑两次（否则产物互相覆盖）。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build-mac:
-    name: macOS 安装包（arm64 + x64）
-    # macOS 构建只能在 macOS 上跑 —— electron-builder 在其他平台会直接报
-    # "Build for macOS is supported only on macOS"。所以这里必须用 macOS runner。
-    # 架构由 --arm64 / --x64 显式指定，与 runner 自身架构无关（当前 macos-latest 是 arm64）。
-    runs-on: macos-latest
+  # ── 门禁 1：三处版本号必须一致 ────────────────────────────────
+  # 标签、package.json、CHANGELOG 任一处不一致就停在这里。
+  # 放行的代价很贵：用户装到的包和 Release 说明对不上，事后极难追溯。
+  check-version:
+    name: 版本一致性
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 tag / package.json / CHANGELOG
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          echo "标签 = $TAG"
+          echo "package.json = $PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::标签 $TAG 与 package.json 的 $PKG 不一致"
+            exit 1
+          fi
+          if ! grep -q "^## \[$TAG\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md 里找不到 [$TAG] 段落"
+            exit 1
+          fi
+
+  # ── 门禁 2：回归必须先绿 ──────────────────────────────────────
+  # 之前的流程是「推标签 → 直接打包发布」，回归根本没跑 —— 等于拿线上 Release
+  # 当测试环境。这里把回归提到打包之前，红了就不出包。
+  regression:
+    name: 发布前回归
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --ignore-scripts
+
+      - name: 跑回归套件
+        run: npm test
+        env:
+          JIANJI_HEADLESS: '1'
+
+  # ── 打包：三平台并行 ──────────────────────────────────────────
+  # electron-builder 的硬限制：Mac 包只能在 macOS 上打
+  # （其他平台直接报 "Build for macOS is supported only on macOS"），
+  # 所以必须用矩阵而不是单机串行。
+  build:
+    name: 打包 ${{ matrix.name }}
+    needs: [check-version, regression]
+    # check-version 带 if 条件，workflow_dispatch 手动触发时它是 skipped。
+    # needs 遇到 skipped 默认会把下游一起跳过，用 always() 解开这个连坐；
+    # 真正的失败判定交给 !failure()。
+    if: always() && !failure() && !cancelled()
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+            args: --win
+          - os: macos-latest
+            name: macOS
+            args: --mac --arm64 --x64
+          # Linux 目标在 package.json 里只声明了 category，产物名会退化成
+          # 带中文的默认值。这里先用 continue-on-error 挂着，不阻塞发布，
+          # 等你确认 Linux 版要不要正式支持后再决定去留。
+          - os: ubuntu-latest
+            name: Linux
+            args: --linux
+            optional: true
+
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional == true }}
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
@@ -23,25 +103,80 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
 
       # 与 ci.yml 一致：--ignore-scripts 跳过 electron 的二进制下载，
       # electron-builder 打包时会自己按目标平台下载对应的一份。
       - name: 安装依赖
         run: npm ci --ignore-scripts
 
+      # --publish never：本步只负责出包，发布统一交给最后的 release job。
+      # 三个平台各自 --publish onTag 会并发抢同一个 Release，容易打架。
       - name: 打包
-        run: npm run dist -- --mac --arm64 --x64 --publish onTag
+        run: npm run dist -- ${{ matrix.args }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 没有 Apple 开发者证书，别让 electron-builder 去找签名身份。
-          # package.json 里已配 mac.identity = null，这里是双保险。
+          # 没有 Apple / Windows 代码签名证书，别让 electron-builder 去找签名身份，
+          # 否则它会直接报错退出。package.json 里已配 mac.identity = null，这里是双保险。
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: jianji-mac
+          name: jianji-${{ matrix.name }}
           path: |
+            dist/*.exe
             dist/*.dmg
             dist/*.zip
+            dist/*.AppImage
           if-no-files-found: error
+          retention-days: 7
+
+  # ── 汇总发布 ──────────────────────────────────────────────────
+  # 单独一个 job 收口，好处有三个：
+  #   1. 三个平台的产物进同一个 Release，不会各建各的；
+  #   2. 产物先齐再发，用户不会看到「只有 Mac 包」的中间态；
+  #   3. 手动触发时天然只出 Artifacts，不会误发 Release。
+  release:
+    name: 汇总并发布
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          # 三个 artifact 平铺到同一层，方便后面直接 artifacts/* 上传
+          merge-multiple: true
+
+      - name: 产物清单
+        run: ls -lh artifacts
+
+      # Release 说明直接从 CHANGELOG.md 抽本版段落，不另维护一份文案。
+      # awk 从 "## [x.y.z]" 开始，遇到下一个 "## [" 结束。
+      - name: 从 CHANGELOG 抽取本版说明
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" \
+            '$0 ~ "^## \\[" v "\\]" {f=1; next} f && /^## \[/ {exit} f {print}' \
+            CHANGELOG.md > release-notes.md
+          echo "── release-notes.md ──"
+          cat release-notes.md
+
+      # 重跑同一次运行的情况要能兜住：Release 已存在就改为覆盖上传，
+      # 而不是直接报 "release already exists" 把整条流水线拖红。
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME 已存在，覆盖上传产物"
+            gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "简记 $GITHUB_REF_NAME" \
+              --notes-file release-notes.md \
+              artifacts/*
+          fi
