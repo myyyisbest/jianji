@@ -33,6 +33,8 @@
     "web": "node server.js",
     "build:cm": "esbuild build/cm6-entry.js --bundle --format=iife --global-name=CM6 --minify --target=es2020 --outfile=vendor/cm6.js",
     "mock-s3": "node scripts/mock-s3.js",
+    "mock-webdav": "node scripts/mock-webdav.js",
+    "test": "node scripts/run-regression.js",
     "test:due": "node scripts/regression-due-date.js",
     "test:layout": "node scripts/regression-layout.js",
     "dist": "electron-builder",

@@ -15,15 +15,17 @@ npm run web     # 起服务，http://127.0.0.1:8642
 
 四组端到端用例共 91 项，基于 Playwright + 系统 Edge：
 
+一条命令跑完（自己拉起 `:8642` 服务，并自动挪走上一轮残留的 mock 同步配置）：
+
 ```bash
-npm run web          # 前三条需要先起服务
-npm run test:due     # 28 项
-npm run test:layout  # 10 项
-npm run test:sort    # 34 项
-npm run test:sync    # 19 项（自带 mock 与独立服务）
+npm test
 ```
 
-跑之前记得把 `data/s3-config.json` 备份后置空，否则「无控制台错误」断言会被 mock 端的 502 打挂。细节见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+想只跑某一组：`npm run test:due`（28 项）/ `test:layout`（10 项）/ `test:sort`（34 项）/ `test:sync`（19 项）。
+单独跑前三条时记得先 `npm run web`；`test:sync` 自带 mock 与独立服务。
+
+CI 会在 `main` / `dev` 的 push 与 PR 上自动跑同一套（`.github/workflows/ci.yml`），红了请先修再提。
+浏览器路径与无头模式可用 `JIANJI_BROWSER` / `JIANJI_HEADLESS=1` 覆盖，细节见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 > 如果你的改动涉及 UI 布局，`test:layout` 是你的朋友 —— 它守着几条硬不变量（任务详情左基准、行布局、图标规格）。
 

@@ -3,6 +3,22 @@
 本文件的格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 新增
+
+- `npm test`：一条命令跑完四组回归（91 项）。自动拉起 `:8642` 服务并在结束后收尾，
+  并自动挪走上一轮残留的 mock 同步配置 —— 此前这一步只能手工把 `data/s3-config.json` 置空，
+  忘做了就会看到一堆 502，「无控制台错误」断言全部挂掉
+- GitHub Actions CI（`.github/workflows/ci.yml`）：`main` / `dev` 的 push 与 PR 自动跑回归套件
+
+### 变更
+
+- 四个回归脚本不再各自写死 Edge 路径与 `headless: false`，统一收敛到 `scripts/lib/browser.js`，
+  可用 `JIANJI_BROWSER` / `JIANJI_HEADLESS=1` 覆盖。这是它们能在 CI 上跑起来的前提 ——
+  之前这套用例只在作者本机可执行
+- `package.json` 补 `mock-webdav` 脚本（`scripts/mock-webdav.js` 一直存在但没有入口）
+
 ## [1.1.0] - 2026-09-20
 
 首个对外发布的版本。Windows x64 安装包与便携版见

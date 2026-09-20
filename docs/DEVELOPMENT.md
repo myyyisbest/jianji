@@ -20,6 +20,7 @@
 | `npm run dist` | electron-builder 打包（产物在 `dist/`） |
 | `npm run build:cm` | esbuild 重打包编辑器内核 → `vendor/cm6.js` |
 | `npm run mock-s3` | 起假 S3 |
+| `npm test` | 跑全部四组回归（自己拉起服务、自动清理 mock 残留，91 项） |
 | `npm run test:due` | 回归：截止日期（28 项） |
 | `npm run test:layout` | 回归：排版不变量（10 项） |
 | `npm run test:sort` | 回归：排序弹出菜单（34 项） |
@@ -29,14 +30,36 @@
 
 ## 回归测试
 
-四组端到端用例，基于 Playwright + 系统 Edge。前三条需先 `npm run web`；`test:sync` 自带全套依赖。
+四组端到端用例，基于 Playwright + 系统 Edge，共 91 项断言。
+
+日常直接用 `npm test`：它会自己拉起 `:8642` 服务（已有一个在跑就复用，跑完不关别人的），
+依次跑完四组，最后汇总成败。**不用先手动 `npm run web`**。
+
+浏览器由 `scripts/lib/browser.js` 统一解析，两个环境变量可覆盖：
+
+| 变量 | 作用 |
+| --- | --- |
+| `JIANJI_BROWSER` | 浏览器可执行文件路径。缺省用系统 Edge |
+| `JIANJI_HEADLESS=1` | 无头模式。本地默认有头（方便肉眼复核排版），CI 必须开 |
+
+```bash
+npm test                    # 本地，有头
+JIANJI_HEADLESS=1 npm test  # CI / 不想被窗口打扰
+```
+
+`main` / `dev` 上的 push 和 PR 都会触发 `.github/workflows/ci.yml`（Windows 镜像自带 Edge），
+失败会直接挡住合并。
 
 > `npm run dist` 每次都会重建 `dist/win-unpacked/`（约 333 MB）和 `dist/builder-debug.yml`。
 > 想保持目录干净，顺序是「先清 → 再打包 → 打包后再清一次」。
 
 ### 跑之前的两件事
 
-1. **把 `data/s3-config.json` 写成 `{}`**（先备份）。`PUT /api/config` 对空 endpoint 返回 400，所以只能直接写文件。留着指向 `127.0.0.1:9121` 的 mock 配置会让「无控制台错误」断言被 502 打挂。
+1. **不要留着指向本地 mock 的同步配置** —— 留着它，页面一启动就去连已经关掉的 mock S3，拿 502，「无控制台错误」这条断言必挂。
+   `npm test` 会自动识别并挪走这类配置（端点落在回环地址 **且** 凭证为 `test`），不用手工处理。
+   两个坑：`server.js` 的 `readJson()` 在主档缺失时会回退读 `${file}.bak`，只清主档会被 `.bak` 原样复活；
+   另外 `regression-sync` 每次挑的空闲端口不固定（9121、9129…），按端口匹配不可靠。
+   指向真实云端的配置不会被自动挪动 —— 那种情况请先自行备份，否则页面启动就会去连你的真实云端。
 2. **强制展开侧栏**：`sidebarCollapsed` 是用户偏好，为 `true` 时侧栏整体 `visibility:hidden`，合成点击点不到其中的模式键 / 排序键。套件在 goto 后执行：
 
    ```js

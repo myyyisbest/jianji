@@ -7,7 +7,7 @@ const { chromium } = require('playwright-core');
 const fs = require('fs');
 
 const BASE = 'http://127.0.0.1:8642';
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const { launch } = require('./lib/browser');
 const results = [];
 const ok = (n, c, d = '') => { results.push({ n, c, d }); console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${d ? '  → ' + d : ''}`); };
 
@@ -18,7 +18,7 @@ const dayOff = (n) => {
 };
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: EDGE, headless: false });
+  const browser = await launch(chromium);
   const page = await (await browser.newContext({ viewport: { width: 1360, height: 900 } })).newPage();
   const errs = [];
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });

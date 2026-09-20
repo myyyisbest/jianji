@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const { launch } = require('./lib/browser');
 const PROJECT = __dirname;                       // 脚本就在项目根的 scripts/ 下
 const ROOT = path.join(PROJECT, '..');
 const BASE = 'http://127.0.0.1:8662';
@@ -197,7 +197,7 @@ async function getLocal() {
        本地 fixture，墓碑场景直接失效。整个场景 A 保持 autoSync=false，
        因为被测的 restoreFromCloud 走的是 GET 云端 + 客户端合并，与 autoSync 无关。 */
 
-    browser = await chromium.launch({ executablePath: EDGE, headless: false });
+    browser = await launch(chromium);
     const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 } });
     const page = await ctx.newPage();
     const errs = [];

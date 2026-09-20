@@ -1,0 +1,32 @@
+name: 回归测试
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  regression:
+    name: 回归套件（91 条断言）
+    # Windows 镜像自带 Edge，scripts/lib/browser.js 的默认路径正好命中，
+    # 不需要额外下载浏览器（playwright-core 本身也不带浏览器）。
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 只需要 playwright-core。--ignore-scripts 跳过 electron 的二进制下载，
+      # 否则光装依赖就要好几分钟，而本轮用例根本用不到 electron。
+      - name: 安装依赖
+        run: npm ci --ignore-scripts
+
+      - name: 跑回归套件
+        run: npm test
+        env:
+          # CI 没有交互桌面，必须无头。本地仍默认有头，方便肉眼复核排版。
+          JIANJI_HEADLESS: '1'

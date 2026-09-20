@@ -3,7 +3,7 @@
 const { chromium } = require('playwright-core');
 const fs = require('fs');
 const path = require('path');
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const { launch } = require('./lib/browser');
 const BASE = 'http://127.0.0.1:8642';
 const NOTES_FILE = path.join(__dirname, '..', 'data', 'notes.json');
 const results = [];
@@ -47,7 +47,7 @@ async function seedFixture() {
   backupArchive();
   await seedFixture();
 
-  const b = await chromium.launch({ executablePath: EDGE, headless: false });
+  const b = await launch(chromium);
   const page = await (await b.newContext({ viewport: { width: 1360, height: 900 } })).newPage();
   const errs = [];
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
