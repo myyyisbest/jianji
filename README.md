@@ -10,6 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT">
+  <img src="https://img.shields.io/github/v/release/myyyisbest/jianji?label=release" alt="Release">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/editor-CodeMirror%206-blue.svg" alt="Editor">
   <img src="https://img.shields.io/badge/dependencies-0%20(runtime)-orange.svg" alt="Runtime dependencies">
@@ -65,6 +66,8 @@
 ## 🚀 快速开始
 
 ### 桌面应用（Electron）
+
+不想从源码构建？直接从 [Releases](https://github.com/myyyisbest/jianji/releases/latest) 下载 Windows 安装包或便携版（约 88 MB，x64）。
 
 ```bash
 npm install     # 首次：安装 electron / esbuild
