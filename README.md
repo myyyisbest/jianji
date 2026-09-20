@@ -67,25 +67,49 @@
 
 ### 桌面应用（Electron）
 
-不想从源码构建？直接从 [Releases](https://github.com/myyyisbest/jianji/releases/latest) 下载 Windows 安装包或便携版（约 88 MB，x64）。
+不想从源码构建？直接从 [Releases](https://github.com/myyyisbest/jianji/releases/latest) 下载：
+
+- **Windows**：安装包或便携版（约 88 MB，x64）
+- **macOS**：`.dmg` 或 `.zip`，Apple Silicon（`arm64`）与 Intel（`x64`）各一份
 
 ```bash
 npm install     # 首次：安装 electron / esbuild
 npm start       # 启动桌面窗口
 ```
 
-数据存于系统用户数据目录（Windows 为 `%APPDATA%/简记/data`），与应用代码分离。
+数据存于系统用户数据目录（Windows 为 `%APPDATA%/简记/data`，
+macOS 为 `~/Library/Application Support/简记/data`），与应用代码分离。
+
+> **macOS 首次打开提示「已损坏 / 无法验证开发者」**
+> 当前 Mac 包<b>未签名、未公证</b>（Apple 开发者账号年费 99 美元，暂未办理）。
+> 这不是文件坏了，是 Gatekeeper 拦的。二选一：
+>
+> ```bash
+> # 方式一（推荐）：去掉下载时打上的隔离属性
+> xattr -cr /Applications/简记.app
+> ```
+>
+> 方式二：在访达里**右键**点 `简记.app` → 「打开」，弹窗里再点一次「打开」。
+> 直接双击是不行的。只需做一次，之后正常启动。
 
 打包独立可执行文件：
 
 ```bash
-npm run dist    # 产物在 dist/
+npm run dist        # 产物在 dist/，按当前平台打包
+npm run dist:mac    # 打 Mac 包（arm64 + x64），只能在 macOS 上运行
 ```
+
+> Windows 上执行 `npm run dist:mac` 会直接失败：
+> `Build for macOS is supported only on macOS`。这是 electron-builder 的硬限制，
+> Mac 包请在 Mac 上打，或用仓库里的 `release.yml` 交给 GitHub Actions。
 
 | 产物 | 说明 |
 | --- | --- |
 | `jianji-<version>-setup.exe` | NSIS 安装程序，可选安装目录、建桌面 / 开始菜单快捷方式 |
 | `jianji-<version>-portable.exe` | 免安装单文件，双击即用 |
+| `jianji-<version>-mac-arm64.dmg` | macOS 磁盘映像，Apple Silicon（M1 及以后） |
+| `jianji-<version>-mac-x64.dmg` | macOS 磁盘映像，Intel 芯片 |
+| `jianji-<version>-mac-<arch>.zip` | 免安装压缩包，解压后拖进「应用程序」即可 |
 
 ### Web 服务
 

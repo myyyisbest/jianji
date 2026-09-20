@@ -47,13 +47,19 @@ function resolveIcon() {
    dark.ico 里是白笔，给深色托盘条用；light.ico 里是深笔，给浅色托盘条用。 */
 function resolveTrayIcon(dark) {
   const fs = require('fs');
-  const name = dark ? 'jianji-tray-dark.ico' : 'jianji-tray-light.ico';
-  const candidates = [
-    path.join(process.resourcesPath || '', name),
-    path.join(__dirname, '..', 'icon', name),
-    // .ico 缺失时退到 32px PNG，避免托盘整个空掉
-    path.join(__dirname, '..', 'icon', dark ? 'jianji-tray-32-dark.png' : 'jianji-tray-32-light.png'),
-  ];
+  const suffix = dark ? 'dark' : 'light';
+  const ico = `jianji-tray-${suffix}.ico`;
+  const png = `jianji-tray-32-${suffix}.png`;
+  /* 顺序取决于平台：
+     - Windows 优先 .ico（会按 DPI 从多档里挑最合适的，比单张 png 清晰）
+     - macOS 反过来。菜单栏图标是 NSImage，.ico 虽然读得出来但取不到合适档位，
+       出来的笔发虚；PNG 才是它认的原生格式。 */
+  const names = process.platform === 'darwin' ? [png, ico] : [ico, png];
+  const candidates = [];
+  for (const name of names) {
+    candidates.push(path.join(process.resourcesPath || '', name));
+    candidates.push(path.join(__dirname, '..', 'icon', name));
+  }
   for (const p of candidates) {
     try { if (p && fs.existsSync(p)) return p; } catch { /* 忽略探测失败 */ }
   }

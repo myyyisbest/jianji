@@ -3,14 +3,20 @@
 本文件的格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [1.2.0] - 2026-09-20
 
 ### 新增
 
+- **macOS 版本**：`.github/workflows/release.yml` 在 macOS runner 上打包，同时出
+  Apple Silicon（arm64）与 Intel（x64）两种架构的 `.dmg` 与 `.zip`。
+  推 `v*` 标签即自动构建并发布到 Release，也可手动触发只出产物不发布。
+  注意：**目前未签名、未公证**，首次打开需右键「打开」或执行一次
+  `xattr -cr /Applications/简记.app`（详见 README）
 - `npm test`：一条命令跑完四组回归（91 项）。自动拉起 `:8642` 服务并在结束后收尾，
   并自动挪走上一轮残留的 mock 同步配置 —— 此前这一步只能手工把 `data/s3-config.json` 置空，
   忘做了就会看到一堆 502，「无控制台错误」断言全部挂掉
 - GitHub Actions CI（`.github/workflows/ci.yml`）：`main` / `dev` 的 push 与 PR 自动跑回归套件
+- `npm run dist:mac`：本地（macOS 上）打 Mac 包的快捷入口
 
 ### 修复
 
@@ -26,6 +32,9 @@
   可用 `JIANJI_BROWSER` / `JIANJI_HEADLESS=1` 覆盖。这是它们能在 CI 上跑起来的前提 ——
   之前这套用例只在作者本机可执行
 - `package.json` 补 `mock-webdav` 脚本（`scripts/mock-webdav.js` 一直存在但没有入口）
+- `package.json` 补 `dist:mac` 脚本
+- 托盘图标取值顺序改为按平台区分：Windows 仍优先 .ico（按 DPI 挑档），
+  macOS 改为优先 32px PNG —— 菜单栏的 NSImage 读 .ico 取不到合适档位，图标发虚
 
 ## [1.1.0] - 2026-09-20
 
