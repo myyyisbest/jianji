@@ -24,7 +24,8 @@ npm test
 想只跑某一组：`npm run test:due`（28 项）/ `test:layout`（10 项）/ `test:sort`（34 项）/ `test:sync`（19 项）。
 单独跑前三条时记得先 `npm run web`；`test:sync` 自带 mock 与独立服务。
 
-CI 会在 `main` / `dev` 的 push 与 PR 上自动跑同一套（`.github/workflows/ci.yml`），红了请先修再提。
+CI 会在 `main` / `dev` / `release/**` 的 push 与 PR 上自动跑同一套
+（`.github/workflows/ci.yml`），红了请先修再提。
 浏览器路径与无头模式可用 `JIANJI_BROWSER` / `JIANJI_HEADLESS=1` 覆盖，细节见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 > 如果你的改动涉及 UI 布局，`test:layout` 是你的朋友 —— 它守着几条硬不变量（任务详情左基准、行布局、图标规格）。

@@ -31,26 +31,44 @@
 
 ## 发布流程
 
-版本号写在 `package.json`（同步改 `CHANGELOG.md`），然后：
+**版本号必须三处一致**：`package.json` 的 `version`、`CHANGELOG.md` 里的
+`## [x.y.z]` 段落、以及 git 标签。`release.yml` 的 `check-version` 会先校验这一点，
+不一致就直接停，不会出包。
 
 ```bash
+# 1. 改 package.json 的 version，并在 CHANGELOG.md 顶部补 "## [x.y.z] - 日期"
+# 2. 提交
+git add package.json CHANGELOG.md
+git commit -m "chore: 发布 v1.2.0"
+git push origin main
+# 3. 打标签 —— 这一步才真正触发流水线
 git tag v1.2.0
 git push origin v1.2.0
 ```
 
-推标签会触发 `.github/workflows/release.yml`：在 macOS runner 上打 arm64 + x64 两份
-`.dmg` / `.zip`，并自动挂到对应 Release 上（`--publish onTag`）。
+推标签触发 `.github/workflows/release.yml`，顺序是：
+
+```
+check-version → regression → build（Windows / macOS / Linux 并行）→ release
+```
+
+任一门禁不过，Release 就不会产生。三个平台的产物进同一个 Release，
+说明文字直接从 `CHANGELOG.md` 抽本版段落，不另维护一份。
 
 想先试打包、暂时不发布：Actions →「打包发布」→ Run workflow，
-产物在当次运行页的 Artifacts 里下载。
+产物在当次运行页的 Artifacts 里下载，不会动 Release。
 
 **为什么 Mac 包必须由 CI 打**：electron-builder 在非 macOS 上会直接报
 `Build for macOS is supported only on macOS`，Windows / Linux 本机打不出来。
+Windows 包本机可以打，但走 CI 的好处是三个平台产物能一起挂进同一个 Release。
 
 **关于签名**：现在 `mac.identity = null`，不签名也不公证，用户首次打开会被 Gatekeeper 拦
 （绕过办法见 README）。要正式签名需要 Apple 开发者账号（99 美元/年），拿到后在仓库 Secrets
 配 `CSC_LINK` / `CSC_KEY_PASSWORD` 与 `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` /
 `APPLE_TEAM_ID`，再把 `mac.identity` 改成证书名称、`gatekeeperAssess` 改回 `true`。
+
+> 流水线的整体设计、触发矩阵、以及**必须人工在仓库网页端配置的分支保护**，
+> 见 [CI-CD.md](CI-CD.md)。
 
 ## 回归测试
 
@@ -71,8 +89,10 @@ npm test                    # 本地，有头
 JIANJI_HEADLESS=1 npm test  # CI / 不想被窗口打扰
 ```
 
-`main` / `dev` 上的 push 和 PR 都会触发 `.github/workflows/ci.yml`（Windows 镜像自带 Edge），
-失败会直接挡住合并。
+`main` / `dev` / `release/**` 上的 push 和指向 `main` / `dev` 的 PR 都会触发
+`.github/workflows/ci.yml`（Windows 镜像自带 Edge）。除了这套回归，它还跑一个
+`lint` job：全量 JS 语法检查 + 重建 `vendor/cm6.js` 比对，确保产物与源码同源。
+失败会直接挡住合并（前提是仓库开了分支保护，见 [CI-CD.md](CI-CD.md)）。
 
 > `npm run dist` 每次都会重建 `dist/win-unpacked/`（约 333 MB）和 `dist/builder-debug.yml`。
 > 想保持目录干净，顺序是「先清 → 再打包 → 打包后再清一次」。

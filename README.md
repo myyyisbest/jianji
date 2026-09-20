@@ -200,6 +200,7 @@ node scripts/mock-webdav.js   # Mock WebDAV（:9700，Basic Auth）
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发环境、npm 脚本、回归测试、视觉约定与踩坑记录 |
 | [docs/SYNC.md](docs/SYNC.md) | 云同步语义、条目级合并、墓碑机制、启动顺序、API |
 | [docs/SECURITY.md](docs/SECURITY.md) | 安全模型与已知取舍 |
+| [docs/CI-CD.md](docs/CI-CD.md) | CI/CD 流水线设计、触发矩阵、分支保护等人工配置 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本记录 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
 
