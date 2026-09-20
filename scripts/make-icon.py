@@ -214,6 +214,73 @@ def draw_icon(size_px):
     return out
 
 
+def draw_tray_icon(size_px, on_dark=False):
+    """
+    托盘图标（RGBA，透明底）。
+
+    与应用图标 draw_icon 的区别，每一条都是踩出来的：
+
+    1. **不要深色圆角方底**。托盘区只有 16~24px，带底的方块在里面就是一块糊掉的黑斑，
+       还会和相邻图标打架。
+    2. **单色笔身，且必须出两套**。子进程实测（浅底/深底各占一半的对比图）：
+         白笔 → 浅色托盘条上完全消失
+         黑笔 → 深色托盘条上完全消失
+       这是物理限制，调色解决不了。所以按 Windows 应用通行做法，运行期监听系统主题、
+       在 light / dark 两套之间切换（见 electron/main.js 的 nativeTheme 监听）。
+    3. **保留橙色墨点**。它是整套视觉唯一的识别锚点，且在深浅两种底上都出得来
+       （实测过：去掉墨点的纯色版本在深底上就是一根白线，认不出是简记）。
+
+    on_dark=False → 深色笔，给浅色托盘条用（Windows 11 默认）
+    on_dark=True  → 白色笔，给深色托盘条用（Windows 10 深色主题 / 深色任务栏）
+
+    几何完全复用 pen_metrics / pen_polygon，保证托盘里的笔和应用图标是同一支。
+    """
+    S = size_px * SS
+    layer = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+    dl = ImageDraw.Draw(layer)
+
+    OFFSET_Y = S * 0.030
+    CX = CY = S / 2
+    ANGLE = 36
+
+    def place(p):
+        return rotate_about((p[0], p[1] + OFFSET_Y), CX, CY, ANGLE)
+
+    body = INK if on_dark else BG_DARK          # 深色托盘条上画白笔，反之画深笔
+    slit = BG_DARK if on_dark else INK          # 开缝取反色，保证在笔身上看得见
+
+    pts = pen_polygon(S)
+    m = pen_metrics(S)
+    W = m['W']
+    cx = m['cx']
+    tail_cy = m['y_tail'] - W * 0.06
+
+    # 笔身 + 笔尾圆头。纯色不渐变——16px 下渐变等于脏
+    dl.polygon([place(p) for p in pts], fill=body + (255,))
+    tail = place((cx, tail_cy))
+    dl.ellipse([tail[0] - W, tail[1] - W, tail[0] + W, tail[1] + W], fill=body + (255,))
+
+    slit_pts = [
+        (cx - S * 0.0034, m['y_nib'] + S * 0.004),
+        (cx + S * 0.0034, m['y_nib'] + S * 0.004),
+        (cx + S * 0.0034, m['y_nib'] + S * 0.062),
+        (cx - S * 0.0034, m['y_nib'] + S * 0.062),
+    ]
+    dl.polygon([place(p) for p in slit_pts], fill=slit + (170,))
+
+    # 橙色墨点：识别锚点，两套都保留
+    tip = place((cx, m['y_tip']))
+    dirx = math.sin(math.radians(ANGLE))
+    diry = math.cos(math.radians(ANGLE))
+    dot_r = S * 0.050
+    d = dot_r * 0.80
+    dot_c = (tip[0] + dirx * d, tip[1] + diry * d)
+    dl.ellipse([dot_c[0] - dot_r, dot_c[1] - dot_r, dot_c[0] + dot_r, dot_c[1] + dot_r],
+               fill=ACCENT + (255,))
+
+    return layer.resize((size_px, size_px), Image.LANCZOS)
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.dirname(here)
@@ -243,6 +310,21 @@ def main():
     # 顺便导出一份 SVG 版（与 ico 同源几何），供网页/文档用
     write_svg(os.path.join(outdir, 'jianji-icon.svg'))
     print('已写 icon/jianji-icon.svg')
+
+    # ---- 托盘图标：透明底、单色笔身，出 light / dark 两套 ----
+    # 16/20/24/32：Windows 托盘按 DPI 挑档（100% / 125% / 150% / 200%）
+    # light.ico → 给浅色托盘条（深色笔）；dark.ico → 给深色托盘条（白色笔）
+    tray_sizes = [16, 20, 24, 32]
+    for on_dark, suffix in ((False, 'light'), (True, 'dark')):
+        for s in tray_sizes:
+            draw_tray_icon(s, on_dark).save(
+                os.path.join(outdir, f'jianji-tray-{s}-{suffix}.png'))
+        draw_tray_icon(32, on_dark).save(
+            os.path.join(outdir, f'jianji-tray-{suffix}.ico'),
+            format='ICO',
+            sizes=[(s, s) for s in tray_sizes],
+        )
+    print('已写 icon/jianji-tray-{light,dark}.ico（各含 %d 档）与对应 PNG' % len(tray_sizes))
 
     # 预览拼接图，便于肉眼检查
     prev = Image.new('RGBA', (16 + 32 + 64 + 128 + 256 + 4 * 24 + 24, 300), (250, 249, 245, 255))

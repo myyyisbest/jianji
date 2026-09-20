@@ -22,6 +22,9 @@ const STORAGE_KEY = 'jianji-notes-v2';
 const LEGACY_KEYS = ['sujian-notes-v2', 'sujian-notes-v1', 'liulin-notes-v1'];
 const THEME_KEY = 'jianji-theme';
 const SIDEBAR_KEY = 'jianji-sidebar-collapsed';
+/* 设置面板分区的展开/折叠状态：{ conn: bool, ops: bool }。
+   和主题/侧栏一样是「本机偏好」，不走存档同步 —— 换台机器默认值即可。 */
+const SETTINGS_SECTIONS_KEY = 'jianji-settings-sections';
 /* 偏好类键（主题 / 侧栏折叠）没有迁移流程，改名等于把用户设置静默重置，
    所以显式列一份旧键做一次性读取回退。 */
 const LEGACY_PREF_KEYS = { 'jianji-theme': 'sujian-theme', 'jianji-sidebar-collapsed': 'sujian-sidebar-collapsed' };
@@ -52,6 +55,12 @@ const state = {
 let saveTimer = null;
 let listTimer = null;
 let cloudTimer = null;
+
+/* 任务面板的 IME 组字保护。
+   组字期间（中文/日文输入法打字中）禁止重建 #taskLists，否则组字会被打断、
+   候选框失去锚点而漂移。renderPending 保证被跳过的渲染在组字结束后补上。 */
+let taskPanelComposing = false;
+let taskPanelRenderPending = false;
 
 /* ============================================================
    后端 API
@@ -181,24 +190,6 @@ function fmtDue(s) {
   return { text: `${m}月${dd}日`, cls: '' };
 }
 
-/* 截止日期的可视文本。原生 date input 被铺透明当作「选择器触发层」，
-   真正显示给用户的是这个 span——这样才能既控字体又要回原生日历 */
-function fmtDueLabel(due) {
-  if (!due) return { text: '设置日期', empty: true, cls: '' };
-  const [y, m, dd] = due.split('-').map(Number);
-  if (!y || !m || !dd) return { text: due, empty: false, cls: '' };
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const diff = Math.round((new Date(y, m - 1, dd) - today) / 864e5);
-  if (diff === 0) return { text: '今天', empty: false, cls: 'due-today' };
-  if (diff === 1) return { text: '明天', empty: false, cls: '' };
-  if (diff === -1) return { text: '昨天', empty: false, cls: 'over' };
-  const cls = diff < 0 ? 'over' : '';
-  if (Math.abs(diff) <= 7) {
-    return { text: diff > 0 ? `${diff} 天后` : `${m}月${dd}日`, empty: false, cls };
-  }
-  return { text: `${y}年${m}月${dd}日`, empty: false, cls };
-}
-
 /* 截止日期的状态同步。
    日期文本由原生 <input type="date"> 自己渲染，这里只维护：
      - chip 上的 has-due 状态类（控制自定义占位是否收起、清除按钮是否出现）
@@ -258,12 +249,22 @@ function currentArchive() {
   };
 }
 
+/* localStorage 写满时的限频提示：写失败不能静默 —— 用户会以为一切都存好了。
+   但保存是 500ms 一次的高频动作，每次都弹会刷屏；10 分钟最多提醒一次，
+   且成功写入一次就复位（下次失败再提醒）。 */
+let storageWarnedAt = 0;
 function persist({ cloud = true } = {}) {
   try {
     const pkg = currentArchive();
     state.savedAt = pkg.savedAt;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pkg));
-  } catch { /* 存储已满等情况静默失败 */ }
+    storageWarnedAt = 0;
+  } catch {
+    if (Date.now() - storageWarnedAt > 10 * 60 * 1000) {
+      storageWarnedAt = Date.now();
+      toast('本机存储空间不足，最近的修改可能没有保存成功');
+    }
+  }
   if (cloud) scheduleCloudSave();
 }
 
@@ -554,7 +555,9 @@ function renderSidebar(animate = false) {
 }
 
 function renderSideFoot() {
-  const el = $('#sideFoot');
+  /* 底栏现在是「计数 + 新建按钮」一行，只能改计数那个 span ——
+     直接写 .side-foot 的 textContent 会把按钮一起冲掉。 */
+  const el = $('#sideFootText') || $('#sideFoot');
   const cloudHint = Backend.syncConfigured && Backend.online ? ' · 云端同步已开启' : ' · 保存在本机';
   if (state.mode === 'notes') {
     el.textContent = `${state.notes.length} 条笔记${cloudHint}`;
@@ -562,7 +565,21 @@ function renderSideFoot() {
     const open = state.tasks.filter(t => !t.done).length;
     el.textContent = `${open} 项未完成 · ${state.tasks.length - open} 已完成${cloudHint}`;
   }
+  syncSideNewMode();
   updateTaskBadge();
+}
+
+/* 侧栏 + 的含义跟着分栏变：笔记模式下「点了就建笔记」（不是菜单，别让
+   辅助技术以为有弹出层），待办模式下才是「任务/清单」二选一。 */
+function syncSideNewMode() {
+  const btn = $('#sideNewBtn');
+  if (!btn) return;
+  const taskMode = state.mode === 'tasks';
+  btn.setAttribute('aria-haspopup', taskMode ? 'true' : 'false');
+  btn.setAttribute('aria-expanded', taskMode && $('#sideNewPop') && !$('#sideNewPop').hidden ? 'true' : 'false');
+  const label = taskMode ? '新建' : '新建笔记';
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
 }
 
 function renderNoteList(animate = false) {
@@ -612,6 +629,14 @@ function renderTaskPanel(animate = false) {
   const box = $('#taskLists');
   const visible = visibleTasks();
 
+  /* 中文输入法正在组字时（compositionstart 之后、compositionend 之前）绝不能重建 DOM。
+     素材替换会让组字中断：拼音串丢失、候选框失去锚点而漂到屏幕角落、首字被吞。
+     这是"输入法漂移"最直接的成因，比焦点丢失更难自查（焦点看着还在，就是打不出字）。
+
+     组字期间直接跳过本次渲染并登记一个待办，等 compositionend 时补渲染一次，
+     保证「跳过的渲染」不会造成界面状态陈旧。 */
+  if (taskPanelComposing) { taskPanelRenderPending = true; return; }
+
   /* 按清单分组 */
   const groups = state.lists.map(l => {
     const items = visible.filter(t => t.listId === l.id);
@@ -656,7 +681,6 @@ function renderTaskPanel(animate = false) {
 
   /* 笔记里的 - [ ] 聚合（可折叠） */
   const agg = collectNoteTodos();
-  const aggOpen = (t) => (!t.due || t.due <= (state.tfilter === 'week' ? week : today));
   if (agg.groups.length) {
     const collapsed = !!state.settings.todosCollapsed;
     const items = agg.groups.filter(g => {
@@ -690,7 +714,29 @@ function renderTaskPanel(animate = false) {
     }
   }
 
+  /* 重建 #taskLists 会连带替换里面的 #tkQuick 输入框。
+     一旦用户在快速添加栏里打字时发生重渲染（勾任务、改清单色、同步拉取…），
+     旧做法会让新元素顶掉旧的：焦点丢失、已输入但未提交的字丢失、
+     更麻烦的是中文输入法的组字状态失去锚点，候选框会飘到屏幕角落（即"输入法漂移"）。
+
+     这里在替换前把「焦点+值+光标位置」存下来，替换后按需还原。
+     只在替换前确实聚焦于 #tkQuick 时还原 —— 否则会把用户主动移走的焦点又抢回来。 */
+  const quickBefore = document.getElementById('tkQuick');
+  const keepQuick = quickBefore && document.activeElement === quickBefore
+    ? { value: quickBefore.value, start: quickBefore.selectionStart, end: quickBefore.selectionEnd }
+    : null;
+
   if (box.innerHTML !== html) box.innerHTML = html;
+
+  if (keepQuick) {
+    const quickAfter = document.getElementById('tkQuick');
+    if (quickAfter) {
+      quickAfter.value = keepQuick.value;
+      quickAfter.focus();
+      try { quickAfter.setSelectionRange(keepQuick.start, keepQuick.end); } catch { /* 类型不支持时忽略 */ }
+    }
+  }
+
   $$('#taskFilters .filter').forEach(b => b.classList.toggle('active', b.dataset.tfilter === state.tfilter));
 }
 
@@ -921,7 +967,7 @@ function ensureInbox() {
   return INBOX;
 }
 
-function createTask({ title = '', listId = null } = {}) {
+function createTask({ title = '', listId = null, focus = null } = {}) {
   ensureInbox();
   const t = {
     id: uid(), title, listId: listId || state.activeListId || INBOX,
@@ -933,7 +979,23 @@ function createTask({ title = '', listId = null } = {}) {
   persist();
   selectTask(t.id);
   renderSidebar();
-  if (!title) $('#taskTitle').focus();
+
+  /* 焦点归属必须由调用方决定，不能一律抢到右侧详情。
+     踩过的坑：原先无条件 `if (!title) $('#taskTitle').focus()`，
+     于是「点左侧清单头的 + 」会建一个空任务并把焦点甩到右侧详情面板，
+     用户以为左侧快速添加栏没反应（字打进了右边的标题框）。
+
+     focus 取值：
+       'quick' → 回到左侧快速添加栏，连续录入多条任务（连点 + 的预期）
+       'title' → 右侧详情标题，用户主动要编辑这个任务
+       null    → 不动焦点，保持调用前的状态（默认，最安全） */
+  if (focus === 'quick') {
+    const q = document.getElementById('tkQuick');
+    if (q) q.focus();
+  } else if (focus === 'title') {
+    const el = $('#taskTitle');
+    if (el) el.focus();
+  }
   return t;
 }
 
@@ -957,7 +1019,10 @@ function deleteTask(id) {
   const next = visibleTasks()[0];
   if (next) selectTask(next.id); else renderSidebar(), showEmpty();
 
-  toast(`已删除任务「${t.title || '未命名'}」`, {
+  /* 提示要带「从哪儿删的」：任务散在多个清单里，光看标题不知道删的是哪个分类下的 */
+  const cat = state.lists.find(l => l.id === t.listId);
+  const catLabel = cat && cat.id !== INBOX ? `清单「${cat.name}」` : '收件箱';
+  toast(`已删除任务「${t.title || '未命名'}」· ${catLabel}`, {
     action: '撤销',
     onAction: () => {
       state.deleted = state.deleted.filter(x => !(x.id === id && x.kind === 'task'));
@@ -1222,7 +1287,8 @@ function runCmd(view, cmd) {
 /* ============================================================
    Toast / 主题
    ============================================================ */
-function toast(msg, { action, onAction } = {}) {
+function toast(msg, { action, onAction, duration = 3000 } = {}) {
+  if (typeof window.__toastHook === 'function') window.__toastHook(msg);   // 自测钩子，生产环境为 undefined
   const el = document.createElement('div');
   el.className = 'toast';
   el.innerHTML = `<span>${escapeHtml(msg)}</span>`;
@@ -1234,13 +1300,22 @@ function toast(msg, { action, onAction } = {}) {
     el.appendChild(btn);
   }
   $('#toastWrap').appendChild(el);
-  let timer = setTimeout(dismiss, 4500);
+  let timer = setTimeout(dismiss, duration);
+  /* 悬停暂停（给时间点到「撤销」），但移开必须**重新计时**。
+     只 clear 不重启的话，光标路过一次 toast 就再也不消失了 ——
+     删完条目后光标常常正好停在原按钮附近，于是提示常驻。 */
   el.addEventListener('mouseenter', () => clearTimeout(timer));
+  el.addEventListener('mouseleave', () => {
+    clearTimeout(timer);
+    timer = setTimeout(dismiss, duration);
+  });
   function dismiss() {
     clearTimeout(timer);
     if (!el.isConnected) return;
     el.classList.add('leaving');
     el.addEventListener('animationend', () => el.remove(), { once: true });
+    /* 兜底：动画被跳过时（reduced-motion、元素不可见）animationend 不会来 */
+    setTimeout(() => el.remove(), 400);
   }
 }
 
@@ -1253,13 +1328,77 @@ function applyTheme(theme, { animate = false } = {}) {
   }
   root.dataset.theme = theme;
   try { localStorage.setItem(THEME_KEY, theme); } catch { /* noop */ }
+  /* 主题必须双写：THEME_KEY（同步写、关窗不丢）+ state.settings.theme。
+     只写 THEME_KEY 不够 —— init() 2160 行会用服务端存档的 settings.theme
+     无条件覆盖本地偏好（applySettings 会再 applyTheme），Electron 防抖保存
+     （900ms 推送）在关窗时极易丢失，存档里就是旧主题，每次启动都被弹回。
+     这里改写 state.settings 后，下一次 persist() 会把新主题写进存档；
+     就算防抖保存丢了，启动链路 2131 行「存档没带 theme 才用本地偏好」
+     与 2160 行覆盖之间仍差一次 —— 所以 init() 里还要配一条
+     「本地偏好优先于存档快照」的裁决（见 init 内注释）。 */
+  if (state.settings.theme !== theme) {
+    state.settings.theme = theme;
+    persist();
+  }
 }
 
 /* ============================================================
    设置面板 / 同步
    ============================================================ */
-function openSettings() { $('#settingsModal').hidden = false; renderBackendStatus(); fillConfigForm(); }
+/* 打开时先 await 状态刷新：applySettingsSections() 依赖 Backend.syncConfigured
+   决定「连接配置」是否强制展开，而它要等 health() 回来才是准确值。 */
+async function openSettings() {
+  $('#settingsModal').hidden = false;
+  await renderBackendStatus();
+  await fillConfigForm();
+  applySettingsSections();
+}
 function closeSettings() { $('#settingsModal').hidden = true; }
+
+/* ---------- 设置面板分区折叠 ----------
+   10 个输入框 + 5 个按钮一次铺开，单屏信息量过大。拆成两块可折叠区，
+   展开状态存 localStorage（本机偏好，不进存档同步）。
+   唯一的例外：**云端还没配置时强制展开「连接配置」** ——
+   否则新用户打开设置只看到两块折叠的标题，根本不知道从哪儿下手。 */
+const SETTINGS_SECTIONS = {
+  conn: { head: '#cfgConnHead', body: '#cfgConnBody' },
+  ops: { head: '#cfgOpsHead', body: '#cfgOpsBody' },
+};
+function readSections() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_SECTIONS_KEY) || '{}') || {}; } catch { return {}; }
+}
+function setSettingsSection(name, open, { remember = true } = {}) {
+  const s = SETTINGS_SECTIONS[name];
+  if (!s) return;
+  const head = $(s.head);
+  const body = $(s.body);
+  if (!head || !body) return;
+  head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  body.hidden = !open;
+  if (remember) {
+    const cur = readSections();
+    cur[name] = open;
+    try { localStorage.setItem(SETTINGS_SECTIONS_KEY, JSON.stringify(cur)); } catch { /* noop */ }
+  }
+}
+function applySettingsSections() {
+  const saved = readSections();
+  setSettingsSection('conn', Backend.syncConfigured ? saved.conn !== false : true, { remember: false });
+  setSettingsSection('ops', saved.ops === true, { remember: false });
+}
+/* 折叠状态下靠摘要告知「连到哪儿」，省掉一次展开。端点通常很长，
+   去掉协议头再交给 CSS 单行省略。 */
+function renderSectionSummaries() {
+  const el = $('#cfgConnSummary');
+  if (!el) return;
+  const bare = u => (u || '').trim().replace(/^https?:\/\//i, '');
+  const target = syncType === 's3' ? bare($('#cfgEndpoint').value) : bare($('#cfgWdEndpoint').value);
+  const tail = syncType === 's3'
+    ? [$('#cfgBucket').value.trim(), $('#cfgObject').value.trim() || 'notes.json'].filter(Boolean).join('/')
+    : ($('#cfgWdPath').value.trim() || '/notes.json');
+  const label = syncType === 's3' ? 'S3 对象存储' : 'WebDAV';
+  el.textContent = target ? `${label} · ${target}${tail ? ' / ' + tail : ''}` : `${label} · 未配置`;
+}
 
 async function renderBackendStatus() {
   const el = $('#backendStatus');
@@ -1280,6 +1419,7 @@ function setSyncType(type) {
   $$('#syncType .sync-type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === syncType));
   $('#cfgS3').hidden = syncType !== 's3';
   $('#cfgWebdav').hidden = syncType !== 'webdav';
+  renderSectionSummaries();
 }
 
 async function fillConfigForm() {
@@ -1297,6 +1437,9 @@ async function fillConfigForm() {
   $('#cfgWdPath').value = c?.webdav?.remotePath || '';
   $('#cfgAutoSync').checked = !!(c && c.autoSync);
   $('#cfgAutoPull').checked = state.settings.autoPull !== false;
+  /* 摘要必须在填完值之后再算 —— setSyncType() 里也算了一次，
+     但那时输入框还是上一次的值（或空的），摘要会滞后一拍。 */
+  renderSectionSummaries();
 }
 
 function configFromForm() {
@@ -1323,11 +1466,16 @@ function configFromForm() {
 async function saveConfigFromForm() {
   const r = await Backend.saveConfig(configFromForm());
   toast(r.ok ? '同步配置已保存' : `保存失败：${r.error || '未知错误'}`);
-  await Backend.health();
+  await Backend.health();          // 刷新 Backend.online / syncConfigured
   refreshCloudDot();
   setStatus('saved');
   renderSideFoot();
-  if (r.ok) await testConnection();
+  if (r.ok) {
+    await testConnection();
+    /* 配置刚改完，必须重建自动拉取定时器：health() 已在上一行更新了
+       syncConfigured，但运行中的 interval 仍是按旧配置建立的（可能压根没建）。 */
+    startAutoPull(true);
+  }
 }
 
 async function testConnection() {
@@ -1388,7 +1536,7 @@ function mergeArchives(local, remote) {
 function applySettings(s) {
   if (!s) return;
   if (s.theme && s.theme !== document.documentElement.dataset.theme) applyTheme(s.theme, { animate: true });
-  if (s.sort && s.sort !== state.sort) { state.sort = s.sort; $('#sortSelect').value = s.sort; }
+  if (s.sort && s.sort !== state.sort) { state.sort = s.sort; syncSortMenu(); }
   if (typeof s.sidebarCollapsed === 'boolean') {
     document.body.classList.toggle('sidebar-collapsed', s.sidebarCollapsed);
     try { localStorage.setItem(SIDEBAR_KEY, s.sidebarCollapsed ? '1' : '0'); } catch { /* noop */ }
@@ -1421,40 +1569,121 @@ function restoreSelection() {
   }
 }
 
+/* 把合并结果写回 state 并刷新界面。
+   注意必须调 renderSidebar()：它内部会按当前 mode 分发到 renderNoteList /
+   renderTaskPanel，并同步侧栏底部的计数与模式按钮。
+   原先 pullCloud / autoPullTick 只做 restoreSelection()，而 restoreSelection
+   仅在「当前选中项失效」时才补一次 renderSidebar —— 选中项还有效时列表
+   一个节点都不会重建，用户看到的就是「拉取了但界面没变」。 */
+function applyMerged(merged) {
+  state.notes = merged.notes;
+  state.tasks = merged.tasks;
+  state.lists = merged.lists;
+  state.deleted = merged.deleted;
+  state.settings = merged.settings;
+  applySettings(state.settings);
+  persist();
+  renderSidebar();
+  renderTags();
+  restoreSelection();
+}
+
 async function pullCloud() {
   const r = await Backend.remoteArchive();
   if (!r.ok) { toast(`拉取失败：${r.error || '未知错误'}`); return; }
   const merged = mergeArchives(currentArchive(), r.archive);
-  state.notes = merged.notes; state.tasks = merged.tasks; state.lists = merged.lists;
-  state.deleted = merged.deleted; state.settings = merged.settings;
-  applySettings(state.settings);
-  persist();
-  renderTags();
-  restoreSelection();
+  applyMerged(merged);
   toast(merged.changed ? `已与云端合并：${merged.changed} 处更新` : '本地与云端已是一致');
 }
 
+/* 强制以云端存档覆盖本地 —— 墓碑锁的唯一逃生出口。
+   背景：删除会在 deleted 里留一条墓碑，而墓碑一经同步就永久生效
+   （云端条目的 updatedAt 必然早于 deletedAt，mergeCollection 每次都会把它删掉），
+   于是「删掉之后再也拉不回来」。普通合并尊重这个语义是合理的，但用户
+   明确表达「我要恢复云端的」时必须有路可走：这里直接丢弃墓碑，用云端为准。
+   冲突处理：本地独有的条目仍然保留（避免把本机新建的内容一起冲掉），
+   只有「云端有 + 本地有墓碑」的那批会被复活。 */
+async function restoreFromCloud() {
+  const r = await Backend.remoteArchive();
+  if (!r.ok) { toast(`恢复失败：${r.error || '未知错误'}`); return; }
+  const remote = r.archive || {};
+  const ids = new Set([...(remote.notes || []), ...(remote.tasks || [])].map(x => x.id));
+  if (!ids.size) { toast('云端存档是空的，没有可恢复的内容'); return; }
+
+  // 只清掉「云端存在该 id」的墓碑：一旦复活成功，墓碑继续留着会在下一轮
+  // 合并里把它再删一次，等于白恢复。其它墓碑保持不动。
+  const kept = (state.deleted || []).filter(t => !ids.has(t.id));
+  const revived = (state.deleted || []).length - kept.length;
+  state.deleted = kept;
+
+  const merged = mergeArchives(currentArchive(), remote);
+  applyMerged(merged);
+  await Backend.saveArchive(currentArchive());
+  setStatus('cloud');
+  refreshCloudDot();
+  toast(`已从云端恢复：${ids.size} 条内容${revived ? `，解除 ${revived} 条删除标记` : ''}`);
+}
+
+/* 设置面板里的「从云端恢复」需要二次确认 —— 它会绕过墓碑语义，
+   是对本地删除意图的显式推翻，不能让用户误点。 */
+let restoreConfirming = false;
+function askRestoreFromCloud() {
+  const btn = $('#cfgRestore');
+  if (restoreConfirming) {
+    restoreConfirming = false;
+    btn.classList.remove('danger');
+    btn.textContent = '从云端恢复';
+    restoreFromCloud();
+    return;
+  }
+  restoreConfirming = true;
+  btn.classList.add('danger');
+  btn.textContent = '确认恢复？会复活已删除的内容';
+  clearTimeout(restoreConfirmTimer);
+  restoreConfirmTimer = setTimeout(() => {
+    restoreConfirming = false;
+    btn.classList.remove('danger');
+    btn.textContent = '从云端恢复';
+  }, 6000);
+}
+let restoreConfirmTimer = null;
+
 const PULL_INTERVAL_MS = Math.max(5, Number(new URLSearchParams(location.search).get('pullSec')) * 1000 || 60000);
 let autoPullTimer = null;
-function startAutoPull() {
+/* startAutoPull(force)：force=true 时忽略「是否已配置」的判断。
+   必要性来自 Backend.syncConfigured 的取值时机 —— 它只在 Backend.health()
+   里更新，而启动时 health() 早于用户填配置。若保存配置后不强制重建定时器，
+   用户必须刷新页面自动同步才会生效。 */
+function startAutoPull(force = false) {
   clearInterval(autoPullTimer);
-  if (!state.settings.autoPull || !Backend.online || !Backend.syncConfigured) return;
+  if (!state.settings.autoPull || !Backend.online) return;
+  if (!force && !Backend.syncConfigured) return;
   autoPullTimer = setInterval(autoPullTick, PULL_INTERVAL_MS);
 }
+
+/* 自动拉取的「失败只提醒一次」闸门。
+   必须声明在使用它的 autoPullTick 之前 —— 用 let/const 声明会被提升到
+   作用域顶部但处于暂时性死区（TDZ），在声明语句执行前访问会抛
+   ReferenceError。放在函数定义之后看似可读，实际一调用就炸。 */
+let autoPullWarned = false;
 
 async function autoPullTick() {
   if (!Backend.online || !state.settings.autoPull || !Backend.syncConfigured) return;
   try {
     const r = await Backend.remoteArchive();
-    if (!r.ok) return;
+    if (!r.ok) {
+      /* 自动拉取失败不再完全静默：只提示一次，避免后端挂掉时每 60 秒弹一次。
+         下次成功后闸门复位，因此「恢复-再次失败」还能再提醒一次。 */
+      if (!autoPullWarned) {
+        autoPullWarned = true;
+        toast(`自动同步失败：${r.error || '未知错误'}`);
+      }
+      return;
+    }
+    autoPullWarned = false;
     const merged = mergeArchives(currentArchive(), r.archive);
     if (!merged.changed) return;
-    state.notes = merged.notes; state.tasks = merged.tasks; state.lists = merged.lists;
-    state.deleted = merged.deleted; state.settings = merged.settings;
-    applySettings(state.settings);
-    persist();
-    renderTags();
-    restoreSelection();
+    applyMerged(merged);
   } catch (e) { console.warn('autoPullTick 失败：', e); }
 }
 
@@ -1472,6 +1701,25 @@ function closeMobileSidebar() {
   const scrim = $('#scrim');
   scrim.classList.remove('show');
   setTimeout(() => { if (!scrim.classList.contains('show')) scrim.hidden = true; }, 320);
+}
+
+function setSidebarCollapsed(collapsed) {
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  state.settings.sidebarCollapsed = collapsed;
+  try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch { /* noop */ }
+  persist();
+}
+
+/* 「返回列表」：清掉选中项回到空态，并且保证列表真的看得见。
+   移动端列表在抽屉里，必须把抽屉拉出来；桌面端侧栏常驻，但用户可能按过折叠键 ——
+   那种情况下不展开的话，点完返回会停在一个「看不见列表的空态」上，等于没返回。 */
+function backToList(kind) {
+  if (kind === 'task') state.selectedTaskId = null;
+  else state.selectedId = null;
+  renderSidebar();
+  showEmpty();
+  if (window.matchMedia('(max-width: 920px)').matches) openMobileSidebar();
+  else if (document.body.classList.contains('sidebar-collapsed')) setSidebarCollapsed(false);
 }
 
 /* ============================================================
@@ -1550,45 +1798,119 @@ function listMd(listEl, ordered) {
 /* ============================================================
    事件绑定
    ============================================================ */
-function toggleNewPop(show) {
-  const pop = $('#newPop');
+/* 新建菜单现在有**两处入口**：顶栏主按钮、侧栏底栏右下角那个。
+   两处共用同一套 [data-new] 行为与同一份关闭逻辑，靠这张表区分，
+   别在两处各写一份（漏改一边就会「顶栏能开、底栏关不掉」这类半边失灵）。
+   每项是「容器 / 触发按钮 / 弹出层」三件套：点外部关闭要按**容器**判定，
+   点在弹出层内边距上（视觉上属于菜单）不能算点外面。 */
+const NEW_MENUS = [
+  { menu: '#newMenu', btn: '#newBtn', pop: '#newPop' },
+  /* 侧栏那个 + 跟随当前分栏：笔记模式下点了直接建笔记（再弹一次菜单纯属多余动作），
+     只有待办模式下才弹，且菜单里只有任务/清单两项 —— 在笔记分栏里塞「新建笔记」
+     和在待办分栏里塞「新建笔记」，都是把全局入口的活儿挪到分栏入口上。 */
+  { menu: '#sideNew', btn: '#sideNewBtn', pop: '#sideNewPop', followsMode: true },
+];
+function toggleNewPop(show, entry = NEW_MENUS[0]) {
+  const pop = $(entry.pop);
+  if (!pop) return;
+  const open = show === undefined ? pop.hidden : show;
+  /* 同一时刻只允许一处展开：两个按钮的点击都 stopPropagation，
+     document 级「点外部」监听器收不到，互斥只能在这里显式做，
+     否则会出现顶栏、底栏两个菜单同时挂着的鬼畜状态。 */
+  if (open) NEW_MENUS.forEach(m => { if (m !== entry) toggleNewPop(false, m); });
+  pop.hidden = !open;
+  const btn = $(entry.btn);
+  if (btn) btn.setAttribute('aria-expanded', String(open));
+}
+function closeAllNewPops() { NEW_MENUS.forEach(entry => toggleNewPop(false, entry)); }
+
+/* 排序：自绘弹出菜单（替换原生 select，见 index.html .sort-menu） */
+const SORT_OPTIONS = ['updated', 'created', 'title'];
+
+function syncSortMenu() {
+  const cur = SORT_OPTIONS.includes(state.sort) ? state.sort : 'updated';
+  document.querySelectorAll('#sortPop .sort-opt').forEach(btn => {
+    const on = btn.dataset.sort === cur;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-checked', String(on));
+  });
+}
+
+function toggleSortPop(show) {
+  const pop = $('#sortPop');
   const open = show === undefined ? pop.hidden : show;
   pop.hidden = !open;
-  $('#newBtn').setAttribute('aria-expanded', String(open));
+  $('#sortBtn').setAttribute('aria-expanded', String(open));
+}
+
+function bindSortMenu() {
+  const btn = $('#sortBtn');
+  const pop = $('#sortPop');
+  if (!btn || !pop) return;
+
+  syncSortMenu();
+  btn.addEventListener('click', e => { e.stopPropagation(); toggleSortPop(); });
+
+  pop.addEventListener('click', e => {
+    const opt = e.target.closest('.sort-opt');
+    if (!opt) return;
+    const next = opt.dataset.sort;
+    toggleSortPop(false);
+    if (!SORT_OPTIONS.includes(next) || next === state.sort) return;
+    state.sort = next;
+    state.settings.sort = next;
+    syncSortMenu();
+    persist();
+    renderNoteList(true);
+  });
+
+  document.addEventListener('click', e => {
+    if (!pop.hidden && !e.target.closest('#sortMenu')) toggleSortPop(false);
+  });
 }
 
 function bindEvents() {
-  /* 新建下拉 */
-  $('#newBtn').addEventListener('click', e => { e.stopPropagation(); toggleNewPop(); });
-  $('#newPop').addEventListener('click', e => {
-    const b = e.target.closest('[data-new]');
-    if (!b) return;
-    toggleNewPop(false);
-    if (b.dataset.new === 'note') createNote();
-    else if (b.dataset.new === 'task') createTask();
-    else createList();
+  /* 新建下拉：顶栏与侧栏底栏两处入口，行为共用一份 */
+  NEW_MENUS.forEach(entry => {
+    const btn = $(entry.btn);
+    const pop = $(entry.pop);
+    if (!btn || !pop) return;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      /* 分栏入口：笔记模式下直接建笔记，不走菜单 */
+      if (entry.followsMode && state.mode !== 'tasks') { closeAllNewPops(); createNote(); return; }
+      toggleNewPop(undefined, entry);
+    });
+    pop.addEventListener('click', e => {
+      const b = e.target.closest('[data-new]');
+      if (!b) return;
+      closeAllNewPops();
+      if (b.dataset.new === 'note') createNote();
+      else if (b.dataset.new === 'task') createTask({ focus: 'title' });   // 「新建任务」：直接去标题
+      else createList();
+    });
   });
   document.addEventListener('click', e => {
-    if (!$('#newPop').hidden && !e.target.closest('#newMenu')) toggleNewPop(false);
+    NEW_MENUS.forEach(entry => {
+      const pop = $(entry.pop);
+      if (pop && !pop.hidden && !e.target.closest(entry.menu)) toggleNewPop(false, entry);
+    });
   });
 
   $('#menuBtn').addEventListener('click', openMobileSidebar);
   $('#scrim').addEventListener('click', closeMobileSidebar);
-  $('#backBtn').addEventListener('click', () => { state.selectedId = null; renderSidebar(); showEmpty(); openMobileSidebar(); });
-  $('#taskBackBtn').addEventListener('click', () => { state.selectedTaskId = null; renderSidebar(); showEmpty(); openMobileSidebar(); });
+  $('#backBtn').addEventListener('click', () => backToList('note'));
+  $('#taskBackBtn').addEventListener('click', () => backToList('task'));
 
-  $('#collapseBtn').addEventListener('click', () => {
-    const collapsed = document.body.classList.toggle('sidebar-collapsed');
-    state.settings.sidebarCollapsed = collapsed;
-    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch { /* noop */ }
-    persist();
-  });
+  $('#collapseBtn').addEventListener('click', () =>
+    setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed')));
 
   /* 模式切换 */
   $('#modeSwitch').addEventListener('click', e => {
     const b = e.target.closest('.mode-btn');
     if (!b) return;
     state.mode = b.dataset.mode;
+    closeAllNewPops();          /* 分栏入口的含义变了，挂着的菜单必须收掉 */
     renderSidebar();
     if (state.mode === 'tasks') {
       if (state.selectedTaskId) renderTaskDetail();
@@ -1607,6 +1929,19 @@ function bindEvents() {
     const btn = e.target.closest('.sync-type-btn');
     if (btn) setSyncType(btn.dataset.type);
   });
+  /* 分区折叠：状态交给 setSettingsSection 落 localStorage，
+     按钮的 aria-expanded 是唯一真值来源（不用 class，避免两处状态打架）。 */
+  $$('.cfg-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const name = head.closest('.cfg-section')?.dataset.section;
+      if (name) setSettingsSection(name, head.getAttribute('aria-expanded') !== 'true');
+    });
+  });
+  /* 摘要随输入实时更新：改了端点不用展开也看得出连去哪儿 */
+  ['cfgEndpoint', 'cfgBucket', 'cfgObject', 'cfgWdEndpoint', 'cfgWdPath'].forEach(id => {
+    const el = $('#' + id);
+    if (el) el.addEventListener('input', renderSectionSummaries);
+  });
   $('#cfgSave').addEventListener('click', saveConfigFromForm);
   $('#cfgTest').addEventListener('click', testConnection);
   $('#cfgAutoPull').addEventListener('change', e => {
@@ -1617,6 +1952,7 @@ function bindEvents() {
   });
   $('#cfgPush').addEventListener('click', pushCloud);
   $('#cfgPull').addEventListener('click', pullCloud);
+  $('#cfgRestore').addEventListener('click', askRestoreFromCloud);
 
   $('#themeBtn').addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
@@ -1634,12 +1970,7 @@ function bindEvents() {
     }
   });
 
-  $('#sortSelect').addEventListener('change', e => {
-    state.sort = e.target.value;
-    state.settings.sort = e.target.value;
-    persist();
-    renderNoteList(true);
-  });
+  bindSortMenu();
 
   $('#filters').addEventListener('click', e => {
     const btn = e.target.closest('.filter');
@@ -1688,7 +2019,13 @@ function bindEvents() {
 
     if (head) {
       const act = e.target.closest('.tk-op')?.dataset.act;
-      if (act === 'add') { state.activeListId = group.dataset.list === '__notes' ? INBOX : group.dataset.list; createTask({ listId: state.activeListId }); return; }
+      if (act === 'add') {
+        state.activeListId = group.dataset.list === '__notes' ? INBOX : group.dataset.list;
+        // focus:'quick' —— 焦点留在左侧快速添加栏，方便连续录入，
+        // 不抢到右侧详情（否则用户会以为左侧没反应）
+        createTask({ listId: state.activeListId, focus: 'quick' });
+        return;
+      }
       if (act === 'rename' && group.dataset.list !== '__notes') { startRenameList(group.dataset.list, head.querySelector('.tk-name')); return; }
       if (act === 'del' && group.dataset.list !== '__notes') { deleteList(group.dataset.list); return; }
       if (e.target.closest('.tk-rename')) return;    // 正在重命名时不折叠
@@ -1744,8 +2081,20 @@ function bindEvents() {
       if (!v) return;
       const groupPath = e.target.closest('.tk-group');
       e.target.value = '';
-      createTask({ title: v, listId: groupPath && groupPath.dataset.list !== '__notes' ? groupPath.dataset.list : (state.activeListId || INBOX) });
+      // focus:'quick' —— 回车建完一条后焦点留在快速添加栏，支持连续录入
+      createTask({ title: v, listId: groupPath && groupPath.dataset.list !== '__notes' ? groupPath.dataset.list : (state.activeListId || INBOX), focus: 'quick' });
     }
+  });
+
+  /* IME 组字保护：组字期间冻结任务面板渲染，结束后补渲染一次。
+     只针对 #tkQuick —— 右侧详情等其他输入框不在 #taskLists 子树里，不受重建影响。 */
+  $('#taskLists').addEventListener('compositionstart', e => {
+    if (e.target.id === 'tkQuick') taskPanelComposing = true;
+  });
+  $('#taskLists').addEventListener('compositionend', e => {
+    if (e.target.id !== 'tkQuick') return;
+    taskPanelComposing = false;
+    if (taskPanelRenderPending) { taskPanelRenderPending = false; renderTaskPanel(); }
   });
 
   /* 编辑器：标题 */
@@ -1844,12 +2193,14 @@ function bindEvents() {
     } else if (mod && e.altKey && e.key.toLowerCase() === 'n') {
       e.preventDefault(); createNote();
     } else if (mod && e.altKey && e.key.toLowerCase() === 't') {
-      e.preventDefault(); createTask();
+      e.preventDefault(); createTask({ focus: 'title' });   // 快捷键新建任务：直接去标题
     } else if (mod && !e.altKey && e.key.toLowerCase() === 's') {
       e.preventDefault(); persist(); toast('已保存');
     } else if (e.key === 'Escape') {
       if (!$('#settingsModal').hidden) { closeSettings(); return; }
-      if (!$('#newPop').hidden) { toggleNewPop(false); return; }
+      /* 顶栏/侧栏哪个开着都关掉 —— 只判 #newPop 会让底栏那个 Esc 关不掉 */
+      if (NEW_MENUS.some(m => !$(m.pop).hidden)) { closeAllNewPops(); return; }
+      if (!$('#sortPop').hidden) { toggleSortPop(false); return; }
       if (document.activeElement === $('#searchInput')) {
         $('#searchInput').value = ''; state.query = '';
         renderSidebar(); $('#searchInput').blur();
@@ -1931,7 +2282,14 @@ async function init() {
   state.lists = initial.lists;
   state.deleted = saved ? (saved.deleted || []).map(t => ({ ...t, kind: t.kind || 'note' })) : [];
 
-  if (saved && saved.settings) state.settings = { ...state.settings, ...saved.settings };
+  if (saved && saved.settings) {
+    /* 存档里的 theme 是「存档时刻的快照」，localStorage THEME_KEY 是「本机
+       此刻的选择」：applyTheme 每次切换都会双写两者，但 persist 的云端推送
+       是 900ms 防抖、Electron 关窗即杀进程，快照极易停在旧值。合并时让
+       本地偏好优先，避免每次启动被旧快照弹回。 */
+    const pref = readPref(THEME_KEY);
+    state.settings = { ...state.settings, ...saved.settings, ...(pref ? { theme: pref } : {}) };
+  }
   state.savedAt = (saved && saved.savedAt) || 0;
   if (themeParam) state.settings.theme = themeParam;
   /* 「本地偏好 > 存档默认值」的优先级。
@@ -1945,7 +2303,12 @@ async function init() {
   try {
     if (state.settings.sidebarCollapsed || readPref(SIDEBAR_KEY) === '1') document.body.classList.add('sidebar-collapsed');
   } catch { /* noop */ }
-  if (state.settings.sort) $('#sortSelect').value = state.settings.sort;
+  /* syncSortMenu() 只读 state.sort 去点亮菜单项，它不会反过来把 state.sort 设成菜单项。
+     而上面「if (state.settings.sort) state.sort = ...」在存档没给值时不会改写 state.sort，
+     于是 state.sort 仍是初始值 'updated' —— 必须由这里显式同步，
+     否则菜单会点亮「按标题」而实际排序仍是「按更新时间」，直到用户动一次控件才一致。
+     注意顺序：必须在 bindEvents() 之前完成，否则 syncSortMenu 找不到 #sortBtn 会直接 return。 */
+  syncSortMenu();
 
   ensureViews();
   bindEvents();
@@ -1962,21 +2325,54 @@ async function init() {
     if (pkg && Array.isArray(pkg.notes) && (pkg.notes.length || (pkg.tasks || []).length)) {
       const m = migrate(pkg);
       state.notes = m.notes; state.tasks = m.tasks; state.lists = m.lists;
-      if (pkg.settings) { state.settings = { ...state.settings, ...pkg.settings }; applySettings(state.settings); }
+      if (pkg.settings) {
+        state.settings = { ...state.settings, ...pkg.settings };
+        /* 服务端存档同样只是快照：本机 localStorage 里已有明确主题选择时，
+           以它为准（与上方 saved.settings 合并同一裁决规则）。否则多端同步
+           一拉取，另一台机器的旧主题会把本机刚切的主题顶掉。 */
+        const pref = readPref(THEME_KEY);
+        if (pref) state.settings.theme = pref;
+        applySettings(state.settings);
+      }
       state.deleted = m.deleted;
       persist({ cloud: false });
       renderTags();
       restoreSelection();
+      if (state.settings.autoPull !== false && Backend.syncConfigured) {
+        autoPullTick();
+        startAutoPull();
+      }
     } else if (state.notes.length || state.tasks.length) {
-      scheduleCloudSave();
-    }
-    if (state.settings.autoPull !== false && Backend.syncConfigured) {
-      autoPullTick();
-      startAutoPull();
+      /* 走到这里 = 后端存档是空的，而本地有内容。本地这些内容是 seed() 刚
+         生成的示例（或用户离线期间写的），两种情况的处置完全不同：
+           · 空服务端 + 有内容 = 全新安装 → 推上去是对的；
+           · 云端 S3 其实有数据、只是后端还没拉 → 直接推会把云端真实数据
+             永久覆盖，这正是「本地清空后云端数据被示例内容顶掉」的成因。
+         所以必须先探一次云端：只有确认云端也为空才允许推送。
+         syncConfigured 为假时云端根本没配，直接推没有风险。 */
+      if (state.settings.autoPull !== false && Backend.syncConfigured) {
+        await autoPullTick();
+        startAutoPull();
+      }
+      if (!Backend.syncConfigured) scheduleCloudSave();
+      else if (!(await Backend.remoteArchive()).ok) toast('云端暂不可达，本次未上传，以免覆盖云端数据');
     }
   }
   setStatus('saved');
   updateTaskBadge();
+  bindDesktopBridge();
+}
+
+/* 桌面端桥接（Electron 专属）。
+   网页模式下 window.desktop 不存在，这里直接返回，功能自然降级 —— 不需要
+   if (isElectron) 分叉整套逻辑，只有确实用到桌面能力的地方才判断。
+   window.desktop 由 electron/preload.js 经 contextBridge 注入。 */
+function bindDesktopBridge() {
+  if (!window.desktop) return;
+
+  // 托盘右键菜单的「新建笔记」：主进程只负责发信号，
+  // 真正的建笔记动作留给前端（数据层含撤销栈与自动保存，主进程不该越权写）
+  window.desktop.onNewNote(() => createNote());
 }
 
 function updateTaskBadge() {
@@ -1984,5 +2380,53 @@ function updateTaskBadge() {
   $('#taskBadge').textContent = n ? String(n) : '';
   $('#taskBadge').hidden = !n;
 }
+
+/* ------------------------------------------------------------
+   自测钩子（回归脚本 scripts/regression-sync.js 使用）
+   只做「暴露内部状态 + 强制触发」，不改任何业务逻辑。
+   挂在 window 上而非模块导出，是因为本项目是无构建的原生前端，
+   脚本只能通过 page.evaluate 访问页面上下文。
+   ------------------------------------------------------------ */
+window.__restoreFromCloud = restoreFromCloud;
+window.__pullCloud = pullCloud;
+/* 强制跑一次自动拉取，并收集期间的 toast。
+   注意不要在这里重置 autoPullWarned 之外的状态：守卫 `!Backend.online` /
+   `!state.settings.autoPull` / `!Backend.syncConfigured` 必须真实成立，
+   否则测的是「被伪造过的环境」，不能反映真实运行路径。
+   调用方负责制造失败源（例如把 endpoint 指向空端口）。 */
+window.__autoPullTickForce = async () => {
+  const prevHook = window.__toastHook;
+  const seen = [];
+  window.__toastHook = m => seen.push(m);
+  let err = null;
+  try { await autoPullTick(); } catch (e) { err = e.message; } finally { window.__toastHook = prevHook; }
+  seen.errors = err;     // 不静默吞错：让回归脚本能看到异常
+  return seen;
+};
+/* 只重置「已提醒过」标记，用于测「恢复后再失败应能再次提醒」 */
+window.__resetAutoPullWarned = () => { autoPullWarned = false; };
+window.__setOnline = v => { Backend.online = v; };
+window.__backendOnline = () => Backend.online;
+window.__autoPullFlag = () => state.settings.autoPull;
+window.__syncConfigured = () => Backend.syncConfigured;
+window.__autoPullTimerActive = () => autoPullTimer !== null && autoPullTimer !== undefined;
+/* 以「服务端当前配置」为基底打补丁，而不是读设置面板的表单。
+   坑：configFromForm() 读的是 #cfgEndpoint 等输入框，面板没打开时这些全是空串，
+   于是 saveConfig 会因为「必填项为空」被服务端 400 拒绝 —— 表面看调用成功返回，
+   实际配置一点没变，测试里就会误判成「改了 endpoint 但行为没变」。
+   自测要改的是「运行中的实际配置」，所以直接从后端拉最新配置再覆盖。 */
+window.__saveConfigWith = async patch => {
+  const cur = await (await fetch('/api/config', { cache: 'no-store' })).json();
+  const base = (cur && cur.config) || {};
+  const next = {
+    ...base, ...patch,
+    s3: { ...(base.s3 || {}), ...(patch.s3 || {}), ...(patch.endpoint ? { endpoint: patch.endpoint } : {}), ...(patch.bucket ? { bucket: patch.bucket } : {}) },
+    webdav: { ...(base.webdav || {}), ...(patch.webdav || {}) },
+  };
+  const r = await Backend.saveConfig(next);
+  await Backend.health();
+  startAutoPull(true);
+  return r;
+};
 
 init();

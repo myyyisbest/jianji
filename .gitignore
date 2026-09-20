@@ -24,7 +24,8 @@ Thumbs.db
 .idea/
 
 # 构建产物（由 npm run build:cm 从 build/cm6-entry.js 生成）
-vendor/
+# 注意：vendor/cm6.js 是运行时依赖，为保证 clone 即可运行，它**入库**。
+# 只有当你本地重新 build:cm 后想丢弃改动时，才用 git checkout 还原它。
 
 # AI 工具工作目录（会话缓存、记忆日志，属本地环境）
 .workbuddy/

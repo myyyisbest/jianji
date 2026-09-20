@@ -14,6 +14,10 @@ const ok = (n, c, d = '') => { results.push({ n, c, d }); console.log(`${c ? 'PA
   await page.addInitScript(() => { try { localStorage.clear(); } catch {} });
   await page.goto('http://127.0.0.1:8642', { waitUntil: 'networkidle' });
   await page.waitForTimeout(700);
+  /* 侧栏折叠是用户偏好（存档可能带 sidebarCollapsed:true），
+     本套件测的是排版不变量 —— 只改 body class 强制展开，不写回存档。 */
+  await page.evaluate(() => document.body.classList.remove('sidebar-collapsed'));
+  await page.waitForTimeout(200);
   await page.click('#modeSwitch .mode-btn[data-mode="tasks"]');
   await page.waitForTimeout(400);
   await page.locator('#taskLists .tk-item:not(.agg)').first().click();

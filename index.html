@@ -3,6 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- 内容安全策略：脚本只允许同源加载。
+       本应用所有 JS 都是本地文件（vendor/cm6.js + js/app.js），无任何 CDN /
+       内联脚本依赖，'self' 一刀切即可。意义：即便未来某个渲染路径出现 XSS
+       （如第三方 Markdown 内容注入），攻击者也无法执行外部脚本。
+       不加 style-src 的限制：编辑器装饰与主题大量使用行内 style。 -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
   <title>简记 · 笔记与待办</title>
   <meta name="description" content="简记：Markdown 即写即渲染的本地笔记 + 清单化待办，支持 WebDAV / S3 云同步">
   <!-- 图标由 scripts/make-icon.py 生成，改图形时重跑该脚本。
@@ -97,13 +103,27 @@
             <button class="filter active" data-filter="all">全部</button>
             <button class="filter" data-filter="fav">收藏</button>
             <button class="filter" data-filter="pinned">置顶</button>
-          </div>
-          <div class="sort-wrap">
-            <select id="sortSelect" title="排序方式">
-              <option value="updated">按更新时间</option>
-              <option value="created">按创建时间</option>
-              <option value="title">按标题</option>
-            </select>
+            <!-- 排序：图标按钮 + 弹出菜单。
+                 原生 <select> 的下拉列表是浏览器/系统绘制的（蓝底高亮 + 系统字体），
+                 无法用 CSS 改造，和应用的设计系统完全脱节；
+                 而且它必须独占一行，把页签与列表之间的空间切碎。
+                 换成自绘菜单后既不占用独立行，样式也完全受控。 -->
+            <div class="sort-menu" id="sortMenu">
+              <button class="sort-btn" id="sortBtn" title="排序方式" aria-haspopup="menu" aria-expanded="false">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h10"/><path d="M4 17h5"/></svg>
+              </button>
+              <div class="sort-pop" id="sortPop" role="menu" hidden>
+                <button class="sort-opt active" data-sort="updated" role="menuitemradio" aria-checked="true">
+                  <span>按更新时间</span><svg class="sort-check" viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7"/></svg>
+                </button>
+                <button class="sort-opt" data-sort="created" role="menuitemradio" aria-checked="false">
+                  <span>按创建时间</span><svg class="sort-check" viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7"/></svg>
+                </button>
+                <button class="sort-opt" data-sort="title" role="menuitemradio" aria-checked="false">
+                  <span>按标题</span><svg class="sort-check" viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7"/></svg>
+                </button>
+              </div>
+            </div>
           </div>
           <div class="tag-bar" id="tagBar"></div>
           <div class="note-list" id="noteList"></div>
@@ -121,7 +141,30 @@
           <div class="task-lists" id="taskLists"></div>
         </div>
 
-        <div class="side-foot" id="sideFoot"></div>
+        <!-- 底栏：左计数、右「新建」。
+             顶栏那个主按钮在最右上角，视线要从列表跳到窗口另一头才够得着；
+             侧栏自己没有新建入口，于是把同款菜单放在底栏右端（右下角），
+             就近新建。菜单向上展开 —— 底栏在侧栏最底部，向下会被裁掉。 -->
+        <div class="side-foot">
+          <span id="sideFootText"></span>
+          <div class="new-menu side-new" id="sideNew">
+            <button class="side-new-btn" id="sideNewBtn" aria-haspopup="true" aria-expanded="false" aria-label="新建" title="新建">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="7" x2="12" y2="17"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+            </button>
+            <!-- 侧栏这个 + 只服务「当前分栏」：笔记模式下直接建笔记，
+                 待办模式下才弹菜单，所以菜单里只有任务/清单两项，没有笔记。 -->
+            <div class="new-pop side-new-pop" id="sideNewPop" hidden>
+              <button data-new="task">
+                <svg viewBox="0 0 24 24"><path d="M3.6 6.9 5.3 8.6l2.6-2.8"/><path d="M3.6 12.4 5.3 14.1l2.6-2.8"/><path d="M3.6 17.9 5.3 19.6l2.6-2.8"/><path d="M11.5 7h9"/><path d="M11.5 12.5h9"/><path d="M11.5 18h5.5"/></svg>
+                <span><b>新建任务</b></span>
+              </button>
+              <button data-new="list">
+                <svg viewBox="0 0 24 24"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h3.6l1.7 2.2H19a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 19 18.2H5a1.5 1.5 0 0 1-1.5-1.5z"/></svg>
+                <span><b>新建清单</b></span>
+              </button>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <section class="editor">
@@ -316,65 +359,91 @@
       <div class="modal-body">
         <div class="backend-status" id="backendStatus"></div>
 
-        <h4 class="section-title">云端同步</h4>
-        <div class="sync-type" id="syncType">
-          <button class="sync-type-btn active" data-type="s3">S3 对象存储</button>
-          <button class="sync-type-btn" data-type="webdav">WebDAV</button>
-        </div>
+        <!-- 分区折叠：10 个输入框 + 5 个按钮一次铺开信息量太大，
+             拆成「连接配置 / 同步操作」两块，默认只展开前者。
+             折叠状态记在 localStorage，见 js/app.js 的 setSettingsSection()。 -->
+        <section class="cfg-section" data-section="conn">
+          <button class="cfg-head" id="cfgConnHead" aria-expanded="true" aria-controls="cfgConnBody">
+            <span>连接配置</span>
+            <span class="cfg-summary" id="cfgConnSummary"></span>
+            <svg class="cfg-caret" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></svg>
+          </button>
+          <div class="cfg-body" id="cfgConnBody">
+            <div class="sync-type" id="syncType">
+              <button class="sync-type-btn active" data-type="s3">S3 对象存储</button>
+              <button class="sync-type-btn" data-type="webdav">WebDAV</button>
+            </div>
 
-        <div id="cfgS3">
-          <p class="section-hint">兼容 AWS S3 / Cloudflare R2 / MinIO 等支持 SigV4 签名的 S3 服务。保存后，笔记与任务存档（JSON）会同步到你指定的对象。</p>
-          <label class="field"><span>Endpoint</span>
-            <input id="cfgEndpoint" placeholder="https://s3.us-east-1.amazonaws.com" autocomplete="off" spellcheck="false">
-          </label>
-          <div class="field-row">
-            <label class="field"><span>Region</span>
-              <input id="cfgRegion" placeholder="us-east-1" autocomplete="off" spellcheck="false">
-            </label>
-            <label class="field"><span>Bucket</span>
-              <input id="cfgBucket" placeholder="my-notes" autocomplete="off" spellcheck="false">
-            </label>
+            <div id="cfgS3">
+              <p class="section-hint">兼容 AWS S3 / Cloudflare R2 / MinIO 等支持 SigV4 签名的 S3 服务。保存后，笔记与任务存档（JSON）会同步到你指定的对象。</p>
+              <label class="field"><span>Endpoint</span>
+                <input id="cfgEndpoint" placeholder="https://s3.us-east-1.amazonaws.com" autocomplete="off" spellcheck="false">
+              </label>
+              <div class="field-row">
+                <label class="field"><span>Region</span>
+                  <input id="cfgRegion" placeholder="us-east-1" autocomplete="off" spellcheck="false">
+                </label>
+                <label class="field"><span>Bucket</span>
+                  <input id="cfgBucket" placeholder="my-notes" autocomplete="off" spellcheck="false">
+                </label>
+              </div>
+              <label class="field"><span>Access Key ID</span>
+                <input id="cfgAccessKey" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="field"><span>Secret Access Key</span>
+                <input id="cfgSecret" type="password" autocomplete="new-password">
+              </label>
+              <label class="field"><span>对象名</span>
+                <input id="cfgObject" placeholder="notes.json" autocomplete="off" spellcheck="false">
+              </label>
+            </div>
+
+            <div id="cfgWebdav" hidden>
+              <p class="section-hint">兼容坚果云、Nextcloud、群晖 WebDAV 等标准服务。密码建议使用「应用密码」而非账号主密码。</p>
+              <label class="field"><span>WebDAV 地址</span>
+                <input id="cfgWdEndpoint" placeholder="https://dav.jianguoyun.com/dav/" autocomplete="off" spellcheck="false">
+              </label>
+              <div class="field-row">
+                <label class="field"><span>用户名</span>
+                  <input id="cfgWdUser" autocomplete="off" spellcheck="false">
+                </label>
+                <label class="field"><span>密码 / 应用密码</span>
+                  <input id="cfgWdPass" type="password" autocomplete="new-password">
+                </label>
+              </div>
+              <label class="field"><span>存档路径</span>
+                <input id="cfgWdPath" placeholder="/jianji/notes.json" autocomplete="off" spellcheck="false">
+              </label>
+            </div>
+
+            <label class="check-field"><input type="checkbox" id="cfgAutoSync"><span>保存即上传</span></label>
+            <label class="check-field"><input type="checkbox" id="cfgAutoPull"><span>多端自动同步（启动时与每分钟自动合并云端变更，删除与偏好同步传播）</span></label>
+
+            <div class="modal-actions">
+              <button class="btn" id="cfgSave">保存配置</button>
+              <button class="btn" id="cfgTest">测试连接</button>
+            </div>
           </div>
-          <label class="field"><span>Access Key ID</span>
-            <input id="cfgAccessKey" autocomplete="off" spellcheck="false">
-          </label>
-          <label class="field"><span>Secret Access Key</span>
-            <input id="cfgSecret" type="password" autocomplete="new-password">
-          </label>
-          <label class="field"><span>对象名</span>
-            <input id="cfgObject" placeholder="notes.json" autocomplete="off" spellcheck="false">
-          </label>
-        </div>
+        </section>
 
-        <div id="cfgWebdav" hidden>
-          <p class="section-hint">兼容坚果云、Nextcloud、群晖 WebDAV 等标准服务。密码建议使用「应用密码」而非账号主密码。</p>
-          <label class="field"><span>WebDAV 地址</span>
-            <input id="cfgWdEndpoint" placeholder="https://dav.jianguoyun.com/dav/" autocomplete="off" spellcheck="false">
-          </label>
-          <div class="field-row">
-            <label class="field"><span>用户名</span>
-              <input id="cfgWdUser" autocomplete="off" spellcheck="false">
-            </label>
-            <label class="field"><span>密码 / 应用密码</span>
-              <input id="cfgWdPass" type="password" autocomplete="new-password">
-            </label>
+        <section class="cfg-section" data-section="ops">
+          <button class="cfg-head" id="cfgOpsHead" aria-expanded="false" aria-controls="cfgOpsBody">
+            <span>同步操作</span>
+            <span class="cfg-summary" id="cfgOpsSummary">推送 · 合并 · 从云端恢复</span>
+            <svg class="cfg-caret" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></svg>
+          </button>
+          <div class="cfg-body" id="cfgOpsBody" hidden>
+            <div class="modal-actions">
+              <button class="btn" id="cfgPush">推送到云端</button>
+              <button class="btn accent" id="cfgPull">从云端合并</button>
+              <button class="btn" id="cfgRestore">从云端恢复</button>
+            </div>
+            <p class="section-hint warn">「从云端合并」按条合并云端与本地的变更（较新修改胜出，删除与偏好同样传播），合并结果自动回传云端，多端保持一致。</p>
+            <p class="section-hint warn">「从云端恢复」以云端为准强行拉回本地，会复活此前删除过的内容 —— 用于本地被清空或误删后抢救数据。需点击两次确认。</p>
           </div>
-          <label class="field"><span>存档路径</span>
-            <input id="cfgWdPath" placeholder="/jianji/notes.json" autocomplete="off" spellcheck="false">
-          </label>
-        </div>
+        </section>
 
-        <label class="check-field"><input type="checkbox" id="cfgAutoSync"><span>保存即上传</span></label>
-        <label class="check-field"><input type="checkbox" id="cfgAutoPull"><span>多端自动同步（启动时与每分钟自动合并云端变更，删除与偏好同步传播）</span></label>
-
-        <div class="modal-actions">
-          <button class="btn" id="cfgSave">保存配置</button>
-          <button class="btn" id="cfgTest">测试连接</button>
-          <button class="btn" id="cfgPush">推送到云端</button>
-          <button class="btn accent" id="cfgPull">从云端合并</button>
-        </div>
         <div class="test-result" id="cfgTestResult" hidden></div>
-        <p class="section-hint warn">「从云端合并」按条合并云端与本地的变更（较新修改胜出，删除与偏好同样传播），合并结果自动回传云端，多端保持一致。</p>
       </div>
     </div>
   </div>

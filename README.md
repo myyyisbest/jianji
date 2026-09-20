@@ -1,127 +1,99 @@
-# 简记 · 笔记与待办
+<p align="center">
+  <img src="icon/jianji-icon.svg" width="88" alt="简记图标">
+</p>
 
-一款 **简洁风格**（暖米白 / 暖深色双主题）的本地笔记 + 清单化待办应用：**Web / Electron 桌面双形态**，基于 **CodeMirror 6** 的 Markdown 即时预览编辑器，后端为单文件零依赖 Node 服务，支持 **S3 / WebDAV 双后端云同步**。
+<h1 align="center">简记 · Jianji</h1>
+
+<p align="center">
+  <strong>本地优先的 Markdown 笔记 + 清单待办，一套代码，Web 与桌面双形态。</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/editor-CodeMirror%206-blue.svg" alt="Editor">
+  <img src="https://img.shields.io/badge/dependencies-0%20(runtime)-orange.svg" alt="Runtime dependencies">
+</p>
+
+---
+
+简记是一款简洁风格的笔记与待办应用。正文以 **Markdown 为唯一数据源**，边写边渲染——你看到的就是排版后的样子，不需要切换「源码 / 预览」。后端是一个**零依赖**的 Node 单文件服务，笔记存本地 JSON，可选同步到 **S3 或 WebDAV**。
+
+它同时是一个 Web 应用和一个 Electron 桌面应用：同一套前端、同一个后端，没有两套逻辑。
+
+| 浅色 | 深色 |
+| --- | --- |
+| ![浅色主题](docs/screenshots/01-light-notes.png) | ![深色主题](docs/screenshots/03-dark-notes.png) |
+
+| 待办视图 | 移动端 |
+| --- | --- |
+| ![待办视图](docs/screenshots/02-light-tasks.png) | ![移动端](docs/screenshots/05-mobile-editor.png) |
 
 ## ✨ 特性
 
-- **界面**：暖米白 / 暖深色双主题、衬线标题、赤陶橙强调色，左侧栏可一键收起，移动端抽屉式布局
-- **Markdown 即时预览**：正文以 Markdown 为唯一数据源，语法符号由 Decoration 隐藏/替换，看到的就是排版后的样子；光标进入节点时源码自动显形
-- **双模式**：顶栏下方切「笔记 / 任务」，两者互不干扰、共用同一套编辑内核与存储
-- **任务**：清单分组、截止日、优先级（低优先/普通/高优先）、重要标记、Markdown 备注
-- **清单**：可为任务建多个清单（默认「收件箱」），支持重命名、换色、折叠、删除
-- **待办聚合**：任务面板自动汇总所有笔记正文里的 `- [ ]` 项，勾选即回写原笔记，点击直达出处
-- **笔记管理**：自动保存、全文搜索（含任务）、置顶、收藏、标签筛选、三种排序、删除撤销、导出 Markdown
+**编辑**
+
+- **Markdown 即时预览**：语法符号由 CodeMirror 6 Decoration 隐藏/替换，光标进入节点时源码自动显形，就地修改
+- 支持标题、引用、列表、任务勾选框、表格、代码块、分割线、加粗 / 斜体 / 删除线 / 高亮 / 行内代码
+- 自动保存、导出 Markdown、旧版 HTML 笔记自动迁移
+
+**整理**
+
+- 双模式：笔记 / 待办，共用同一套编辑内核与存储
+- 全文搜索（同时搜笔记与任务）、置顶、收藏、标签筛选、三种排序
+- 删除后可撤销（提示 3 秒消失，带所属分类）
+
+**待办**
+
+- 清单分组（默认「收件箱」，可建多个，支持换色 / 折叠 / 重命名）
+- 截止日、三档优先级、重要标记、Markdown 备注
+- **待办聚合**：自动汇总所有笔记正文里的 `- [ ]` 项，勾选即回写原笔记，点击直达出处
+- 筛选：全部 / 今天 / 重要 / 未来 7 天 / 已完成
+
+**形态**
+
 - **桌面应用**：Electron 内嵌同一后端（随机端口 + 仅本机回环），数据存系统用户目录
-- **云同步**：S3（AWS SigV4 直连）或 WebDAV（坚果云 / Nextcloud / 群晖），笔记 + 任务 + 清单整体存档，按条目级合并多端变更
+- **系统托盘**：图标随系统主题深浅自动切换，右键菜单可显隐窗口 / 新建笔记
+- **Web 服务**：起一个 Node 进程即可，局域网或本机访问
 
-## 🚀 运行
+**同步**
 
-### 方式一：桌面应用（Electron）
+- S3（AWS SigV4 直连，兼容一切 SigV4 服务）或 WebDAV（坚果云 / Nextcloud / 群晖）
+- 笔记 + 任务 + 清单整体存档，**条目级合并**多端变更
+- 「从云端恢复」作为误删的逃生通道
+
+## 🚀 快速开始
+
+### 桌面应用（Electron）
 
 ```bash
-npm install     # 首次，安装 electron / esbuild
+npm install     # 首次：安装 electron / esbuild
 npm start       # 启动桌面窗口
 ```
 
-桌面端数据存于系统用户数据目录（Windows：`%APPDATA%/简记/data`），与应用代码分离。
-打包独立可执行文件：`npm run dist`（需已安装 electron-builder，产物在 `dist/`）。
+数据存于系统用户数据目录（Windows 为 `%APPDATA%/简记/data`），与应用代码分离。
 
-打包产物（`dist/`）：
+打包独立可执行文件：
+
+```bash
+npm run dist    # 产物在 dist/
+```
 
 | 产物 | 说明 |
 | --- | --- |
-| `jianji-1.1.0-x64.exe`（NSIS） | 安装程序，可选安装目录、建桌面 / 开始菜单快捷方式 |
-| `jianji-1.1.0-x64.exe`（portable） | 免安装单文件，双击即用（与上者同名，按需二选一target） |
-| `win-unpacked/简记.exe` | 未压缩目录版，用于快速验证 |
+| `jianji-<version>-setup.exe` | NSIS 安装程序，可选安装目录、建桌面 / 开始菜单快捷方式 |
+| `jianji-<version>-portable.exe` | 免安装单文件，双击即用 |
 
-图标由 `scripts/make-icon.py` **生成**，不要手改 `icon/` 下的产物：
-
-```bash
-python scripts/make-icon.py     # 重出全部尺寸 + .ico + .svg + 预览图
-```
-
-图形是一支斜置的「签字笔」：深炭圆角底 + 奶油白笔身 + 笔尖处的强调橙墨点。配色直接取自
-`css/style.css` 的主题变量（`#21201c` / `#faf9f5` / `#d97757`），所以图标和界面是同一套色。
-
-- `jianji-icon.ico` —— **Windows 打包与安装程序必须用 `.ico`**。NSIS 读取 PNG 会直接报
-  `Error while loading icon ... invalid icon file` 并中止构建（electron-builder 不会自动转换）。
-  本文件内嵌 **16/24/32/48/64/128/256 七档**，系统按 DPI 自动挑选。
-- `jianji-icon-256.png` —— 经 `extraResources` 落到 `resources/icon.png`，供 `resolveIcon()` 运行时使用。
-- `jianji-icon.svg` —— 矢量版，网页 favicon 首选（任何 DPI 都清晰）。
-- `jianji-icon-16/32.png` —— 标签页 favicon 的位图兜底（小尺寸要单独出图，缩 180 会糊）。
-- `jianji-icon-180.png` —— apple-touch-icon。
-
-**网页里的 logo 与 `.ico` 是同源的**：`index.html` 里 `.brand-logo` / `.empty-logo` 的 SVG 坐标，
-是从 `make-icon.py` 的同一组几何参数算出来的（`write_svg()` 会导出可对照的 `jianji-icon.svg`）。
-改图形时两边一起改，否则应用内 logo 会和任务栏图标对不上。
-
-> 打包验证：`npm run dist` 成功产出 exe，进程名 `简记.exe` 无乱码，数据目录落在
-> `%APPDATA%\简记`，asar 内含 electron/main.js、server.js、index.html、css/、js/、vendor/、icon/，
-> 未误打包 node_modules。
-
-### 方式二：Web 服务
+### Web 服务
 
 ```bash
-npm run web          # 等价于 node server.js
-# 默认 http://localhost:8642（PORT / HOST 环境变量可改）
+npm run web     # 等价于 node server.js
+# 默认 http://localhost:8642，PORT / HOST 环境变量可改
 ```
 
-Web 模式**运行时零依赖**：`vendor/cm6.js` 已预打包入库，直接起 Node 服务即可。
-不做后端、直接双击 `index.html` 也能用，此时数据仅保存在浏览器 localStorage（界面会提示「后端未连接」）。
+Web 模式**运行时零依赖**：编辑器内核已预打包在 `vendor/cm6.js`，clone 下来直接起服务即可。
 
-### 回归自测
-
-两组基于 Playwright + 系统 Edge 的端到端用例（需先 `npm run web` 起服务）：
-
-```bash
-npm run test:due     # 截止日期可维护性（选日期 / 键盘 / 清空 / 持久化）
-npm run test:layout  # 排版不变量（行布局 / 左基准 / 图标 / 无子步骤）
-```
-
-## 📝 Markdown 即时预览
-
-编辑器不再做「源码 / 预览」切换，输入即刻渲染：
-
-| 输入 | 触发 | 结果 |
-| --- | --- | --- |
-| `#` `##` `###` `####` + 空格 | 行首 | 一 ~ 四级标题 |
-| `>` + 空格 | 行首 | 引用块 |
-| `-` / `*` / `1.` + 空格 | 行首 | 无序 / 有序列表 |
-| `- [ ]` + 空格 | 行首 | 待办勾选框（点方框即打勾） |
-| `**粗体**` `*斜体*` `~~删除~~` `==高亮==` `` `代码` `` | 成对符号 | 行内格式 |
-| `\| 列 \| 列 \|` 或工具栏末按钮 | 行首 | 表格（光标离开后渲染为真正的表格） |
-| ` ``` ` + 回车 | 行首 | 代码块（块内不参与行内渲染） |
-| `---` + 回车 | 行首 | 分割线 |
-
-实现要点（`build/cm6-entry.js` + `vendor/cm6.js`）：
-
-- 解析用 **@lezer/markdown**（含 GFM 扩展），装饰走 `Decoration.replace / mark / line`，块级表格由一个 `StateField` 整块替换为 Widget
-- 光标或选区与节点相交时**保留源码原文**，方便就地编辑
-- 文本一律经 `textContent` 写入 DOM，天然免疫 XSS
-- 存储格式只有 Markdown：旧版 HTML 富文本笔记在加载时经 `htmlToMd()` 自动迁移
-
-> 需要重新打包编辑器内核时：`npm run build:cm`（esbuild iife → `vendor/cm6.js`）。
-
-## ✅ 任务与清单
-
-- 侧栏切到「任务」：顶部输入框回车即快速建任务；下方按清单分组，组头可折叠、换色、重命名、删除
-- 组内排序：未完成 → 重要 → 有截止日 → 截止日近 → 优先级高
-- 点开任务进入详情：标题、无边框的元信息条（所属清单色点 / 截止日 / 优先级 / 创建时间），以及一段与笔记同内核的 Markdown 备注
-- 截止日期用原生 `<input type="date">`：点输入框任意位置唤起日历，也支持方向键切换月/日、直接敲数字、`Esc` 取消；有值时旁边出现 `×` 一键清除
-- 筛选：**全部 / 今天 / 重要 / 未来 7 天 / 已完成**；顶栏「任务」页签显示未完成数量
-- 「笔记中的待办」分组：把所有笔记正文里的 `- [ ]` 汇总于此，勾选直接回写源笔记、点击跳转出处
-
-> 任务刻意只保留**标题 + Markdown 备注**两层结构，不引入子步骤/子任务，避免层级膨胀。
-
-## 🎨 视觉约定
-
-- **图标**：全站统一 24 网格、圆头圆角、1.7 描边，由 `js/app.js` 顶部的 `svg()` 助手集中定义（文档 / 钩子清单 / 文件夹 / 加号 / 铅笔 / 图钉 / 星标 / 垃圾桶 / 勾 / 信笺），不再零散拼字符
-- **勾选框**：列表行与正文 widget 都是「圆角方块」，尺寸与描边同源，勾线为描边动画渐显
-- **左基准**：任务详情内标题、元信息条色点、备注图标、工具栏图标、正文首行共用一条竖线，由 `.task-body` 上的 `--check-col` / `--check-gap` / `--text-inset` 三个变量推导，不写魔法数字
-- **日期控件**：必须是「真控件」。不要用透明 `<input type="date">` 铺满自定义 chip 当点击垫片——一旦弹出日历再按 `Esc` 取消，原生段会脱离激活态，之后方向键与数字键被静默丢弃，且 `Esc` 被日历弹层吃掉、JS 收不到通知。空值的 `yyyy/mm/日` 画在 shadow DOM 里，`color:transparent` / `font-size:0` / `display:none` 全部无效，占位文案只能靠不透明底色盖住，不能靠改颜色
-- **宽屏布局**：宽度分三层，各管一段——① `.app` 外壳**不加 `max-width`**，流式填满窗口；② `.page` 纸张**弹性**变宽（上限 `--doc-col`，窄时随容器收缩）；③ `--measure` 才是正文**文本栏宽**，只约束逐行阅读的内容。三者都在 `.editor` 上定义为变量。反例（都踩过）：给外壳写 `max-width: 1400px`，最大化后左右各空 256px；给纸张写死 `760px`，编辑器 1550px 时左右各空 395px —— 就是那两条难看的空白带
-- **正文的宽度约束必须挂在 `.cm-content` 上**：纸张里的 `p` / `h1` / `table` 都是 CodeMirror 运行时生成的，静态 DOM 里只有一个 `div.cm-editor`。写 `.page p { max-width }` 这类选择器**永远命中不到**，得用 `.page .cm-content`（CM6 的量测基准元素，设 `max-width` + `margin-inline: auto` 是安全的）
-- **验对齐要比「外框」，不要比「内容沿」**：头部三条（`.editor-top` / `.meta-row` / `.toolbar`）自带 padding，它们和纸张对齐的是**边框盒**。拿 `rect.left + paddingLeft` 去比，会看到 14/12/18px 的差，误判成错位——那其实是设计缩进。凡是"对齐"断言，先想清楚要对齐的是框还是内容（两种都对，但得挑一个说清楚）
+> 也可以不启后端、直接双击 `index.html`，此时数据仅保存在浏览器 localStorage（界面会提示「后端未连接」）。
 
 ## ⌨️ 快捷键
 
@@ -134,69 +106,80 @@ npm run test:layout  # 排版不变量（行布局 / 左基准 / 图标 / 无子
 | `Ctrl/⌘ B` / `I` | 加粗 / 斜体 |
 | `Esc` | 关闭弹窗 · 清空搜索 |
 
-## ☁️ 云端同步（S3 / WebDAV）
+## ☁️ 云端同步
 
 1. 启动后端，点击顶栏「设置」，在 S3 / WebDAV 间任选其一（两种配置可分别留存）
-2. **S3**：填 Endpoint / Region / Bucket / Access Key / Secret（兼容一切 SigV4 服务）
-   **WebDAV**：填地址 / 用户名 / 应用密码 / 存档路径（兼容坚果云、Nextcloud、群晖等）
+2. **S3**：填 Endpoint / Region / Bucket / Access Key / Secret
+   **WebDAV**：填地址 / 用户名 / 应用密码 / 存档路径
 3. 开启「保存即上传」：每次保存自动推送；「从云端合并」按条目级合并多端变更（较新修改胜出，删除同步传播）
 
 - 存档内容为整体：`{notes, tasks, lists, settings, deleted, savedAt}`
-- S3 存档对象默认 `notes.json`；WebDAV 存档路径默认 `/notes.json`（父目录不存在时自动逐级 MKCOL）
+- S3 存档对象默认 `notes.json`；WebDAV 存档路径默认 `/notes.json`
 - 数据链路：浏览器 / 桌面端 → `data/notes.json` → 你的 S3 桶或 WebDAV 目录
 
-本地自测同步链路（无需真实云服务）：
+不接真实云服务也能自测整条链路：
 
 ```bash
-node scripts/mock-s3.js       # Mock S3（:9000，不做签名校验）
-node scripts/mock-webdav.js   # Mock WebDAV（:9700，Basic Auth 固定 u:p）
+node scripts/mock-s3.js       # Mock S3（:9121，不做签名校验）
+node scripts/mock-webdav.js   # Mock WebDAV（:9700，Basic Auth）
 ```
 
-> 注意：密钥 / 密码保存在服务器 `data/s3-config.json`，请勿将 `data/` 提交到公共仓库（已 gitignore）。
+> **删除是永久且粘性的**——这是墓碑机制的设计必然结果（详见 [docs/SYNC.md](docs/SYNC.md)）。误删请用设置面板的「从云端恢复」。
 
-## 📁 结构
+## 📁 目录结构
 
 ```
-project/
-├── package.json            # Electron 入口 / 脚本 / 打包配置
-├── electron/main.js        # Electron 主进程（进程内启动后端 + BrowserWindow + 图标解析）
-├── index.html              # 页面结构（笔记编辑器 / 任务详情 / 设置弹窗）
+├── index.html              # 页面结构
 ├── css/style.css           # 简洁风格设计系统（双主题）
-├── js/app.js               # 前端逻辑（渲染 / 任务 / 迁移 / 同步设置）
-├── js/markdown.js          # 零依赖 MD→HTML 渲染器（浏览器 / Node 双导出）
-├── vendor/cm6.js           # CodeMirror 6 打包产物（运行时直接用，勿手改）
-├── build/cm6-entry.js      # 编辑器内核源码（liverPreview 扩展、GFM 解析、快捷键）
-├── icon/                   # 应用图标（产物，由 scripts/make-icon.py 生成）
+├── js/
+│   ├── app.js              # 前端逻辑（渲染 / 任务 / 同步设置 / 桌面桥接）
+│   └── markdown.js         # 零依赖 MD→HTML 渲染器
+├── build/cm6-entry.js      # 编辑器内核源码（即时预览扩展、GFM 解析、快捷键）
+├── vendor/cm6.js           # 上述源码的 esbuild 产物，运行时直接用（入库以便 clone 即跑）
+├── electron/
+│   ├── main.js             # 主进程（应用名 / 单实例锁 / 内嵌后端 / 窗口 / 托盘）
+│   └── preload.js          # 预加载脚本（contextBridge 白名单）
 ├── server.js               # 零依赖 Node 后端（静态服务 + API + S3 SigV4 + WebDAV）
-├── scripts/                # start-electron.js、mock-s3.js、mock-webdav.js、make-icon.py、回归用例
-├── dist/                   # electron-builder 打包产物（安装包 / 便携版，已 gitignore）
-└── data/                   # 运行时生成：notes.json、s3-config.json（已 gitignore）
+├── scripts/                # 启动脚本、mock 服务、图标生成、回归用例
+├── icon/                   # 应用图标与托盘图标（由 scripts/make-icon.py 生成）
+├── docs/                   # 架构、开发、同步、安全文档
+├── dist/                   # 打包产物（gitignore）
+└── data/                   # 运行时生成：notes.json、s3-config.json（gitignore）
 ```
 
-> `vendor/cm6.js` 是构建产物，改编辑器内核请改 `build/cm6-entry.js` 后执行 `npm run build:cm` 重新生成（已 gitignore）。
+## 🛠 技术栈
 
-### 存储键迁移（更名历史）
+| 层 | 选型 |
+| --- | --- |
+| 编辑器 | CodeMirror 6 + @lezer/markdown（含 GFM），esbuild 打包为单文件 |
+| 前端 | 原生 JS，无框架、无构建步骤（改完刷新即生效） |
+| 后端 | Node 原生 `http` 模块，零第三方依赖 |
+| 桌面 | Electron（内嵌后端 + preload/IPC） |
+| 测试 | Playwright + 系统 Edge，四组端到端回归（91 项） |
 
-应用由「素笺」更名为「简记」时，localStorage 键同步前移。为避免老用户升级后看到空笔记库，`js/app.js` 保留了完整回退链，**首次启动自动迁移、旧键不删**（留作回滚保险）：
+## 🔒 安全
 
-| 用途 | 新键 | 兼容读取的旧键 |
-| --- | --- | --- |
-| 笔记存档 | `jianji-notes-v2` | `sujian-notes-v2` → `sujian-notes-v1` → `liulin-notes-v1` |
-| 主题 | `jianji-theme` | `sujian-theme` |
-| 侧栏折叠 | `jianji-sidebar-collapsed` | `sujian-sidebar-collapsed` |
+后端是**零鉴权**的，所以暴露面被收到最小：默认只监听 `127.0.0.1`、请求体有大小上限、存档原子写入且损坏自动回退、静态路径用 `path.relative` 判越界、页面带 CSP、Electron 导航锁死。
 
-> 主题优先级：URL `?theme=` > 存档 `settings.theme` > 本地偏好键。存档里的主题是「存档时刻的快照」，本机偏好代表用户此刻的选择。
+完整说明见 [docs/SECURITY.md](docs/SECURITY.md)。
 
-## 🔌 API
+> 同步密钥以明文存在服务器 `data/s3-config.json`。`data/` 已被 gitignore，**请勿将其提交到仓库**。
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/api/health` | 健康检查（笔记数 / 任务数 / 是否配置同步） |
-| GET | `/api/notes` | 读取本地存档（含 tasks / lists / settings / deleted） |
-| PUT | `/api/notes` | 覆盖保存，autoSync 时顺带推送 |
-| GET | `/api/config` | 读取同步配置（`{type, s3, webdav, autoSync}`） |
-| PUT | `/api/config` | 保存同步配置（按 type 校验必填项） |
-| POST | `/api/config/test` | 连接诊断（按类型逐级检查凭证与存档） |
-| GET | `/api/sync/remote` | 只读云端存档（供前端合并） |
-| POST | `/api/sync/push` | 本地 → 云端 |
-| POST | `/api/sync/pull` | 云端 → 本地（保留 settings / deleted） |
+## 📚 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 整体架构、Web / 桌面双形态、两条桌面通道、Markdown 编辑器实现 |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发环境、npm 脚本、回归测试、视觉约定与踩坑记录 |
+| [docs/SYNC.md](docs/SYNC.md) | 云同步语义、条目级合并、墓碑机制、启动顺序、API |
+| [docs/SECURITY.md](docs/SECURITY.md) | 安全模型与已知取舍 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本记录 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
+
+## 🤝 贡献
+
+欢迎 Issue 与 PR。提交前请跑一遍回归测试，并阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 📄 许可证
+
+[MIT](LICENSE) © 2026 wuxujia

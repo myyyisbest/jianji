@@ -20,7 +20,12 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = Number(process.env.PORT) || 8642;
-const HOST = process.env.HOST || '0.0.0.0';
+/* 默认只监听本机回环。
+   原先默认 0.0.0.0：同一局域网内的任何设备都能直接 GET /api/config 拿到
+   S3/WebDAV 明文凭据、PUT /api/notes 覆盖或清空你的笔记。笔记是私人数据，
+   后端又是零鉴权的，暴露面必须收到最小。确需局域网访问时用
+   HOST=0.0.0.0 node server.js 显式打开（README 有说明）。 */
+const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
 const NOTES_FILE = path.join(DATA_DIR, 'notes.json');
@@ -29,8 +34,38 @@ const DEFAULT_OBJECT = 'notes.json';
 
 /* ---------------- 文件读写 ---------------- */
 function ensureDataDir() { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true }); }
-function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } }
-function writeJson(file, data) { ensureDataDir(); fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+/* 原子写入：先写 .tmp，再 rename 到目标名。
+   直接 writeFileSync 覆盖正式档的风险：进程写到一半崩溃 / 断电 / 磁盘满，
+   会留下一个被截断的 JSON —— 下次启动 readJson 解析失败返回 null，
+   前端就走 seed() 重建示例，用户的真实存档等于被静默顶掉。
+   rename 在 Windows 上若遇文件被占用（杀软扫描等）会失败，退回直接覆写。 */
+function writeJson(file, data) {
+  ensureDataDir();
+  const text = JSON.stringify(data, null, 2);
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, text);
+  try {
+    /* 覆盖前把当前档留一份 .bak：即使新内容本身有问题（如上游 bug 写入坏数据），
+       也始终保有一份「上一版已知良好」的副本可人工找回。 */
+    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    fs.writeFileSync(file, text);
+    try { fs.unlinkSync(tmp); } catch { /* 清理失败无害 */ }
+    console.error(`[jianji] 原子替换失败，已退回直接写入: ${e.message}`);
+  }
+}
+
+/* 读取：主档损坏（截断 / 半截 JSON）时回退 .bak —— 上一版已知良好档。
+   两个都读不出来才返回 null（调用方按「无存档」处理，前端走 seed()）。 */
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* 主档损坏，尝试 .bak */ }
+  try {
+    const d = JSON.parse(fs.readFileSync(`${file}.bak`, 'utf8'));
+    console.error(`[jianji] 主档损坏，已从 ${path.basename(file)}.bak 恢复读取`);
+    return d;
+  } catch { return null; }
+}
 
 /* ---------------- AWS SigV4 ---------------- */
 const sha256hex = b => crypto.createHash('sha256').update(b).digest('hex');
@@ -228,10 +263,26 @@ function send(res, status, data, type = 'application/json; charset=utf-8') {
   res.end(body);
 }
 
-function readBody(req) {
+/* 请求体大小限制。
+   原先 readBody 无上限：一个超大 POST 就能把进程内存吃满（零依赖后端没有
+   任何防护）。存档接口放宽（长笔记 + 同步历史可能到几十 MB），配置接口收紧
+   （几 KB 就够了）。超限直接 413 并断开，不再继续缓冲。 */
+const MAX_BODY_NOTES = 32 * 1024 * 1024;    // /api/notes：32 MB
+const MAX_BODY_CONFIG = 256 * 1024;         // /api/config：256 KB
+
+function readBody(req, limit = MAX_BODY_NOTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', c => chunks.push(c));
+    let size = 0;
+    req.on('data', c => {
+      size += c.length;
+      if (size > limit) {
+        req.destroy();                      // 停止接收，连接直接断
+        reject(new Error(`请求体超过上限（${Math.round(limit / 1024)} KB）`));
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
@@ -240,7 +291,11 @@ function readBody(req) {
 function serveStatic(pathname, res) {
   const rel = pathname === '/' ? '/index.html' : pathname;
   const fp = path.normalize(path.join(ROOT, rel));
-  if (!fp.startsWith(ROOT)) return send(res, 403, 'Forbidden', 'text/plain');
+  /* 越界判定用 path.relative 而非 startsWith：
+     前缀匹配存在经典绕过 —— 兄弟目录 C:\...\sujian-notes-evil 同样以
+     C:\...\sujian-notes 开头，startsWith 会放行。relative 在目标在根内时
+     返回不带 .. 开头的相对路径，出根则一定以 .. 开头。 */
+  if (path.relative(ROOT, fp).startsWith('..')) return send(res, 403, 'Forbidden', 'text/plain');
   fs.readFile(fp, (err, buf) => {
     if (err) return send(res, 404, 'Not Found', 'text/plain');
     send(res, 200, buf, MIME[path.extname(fp)] || 'application/octet-stream');
@@ -257,11 +312,16 @@ const server = http.createServer(async (req, res) => {
       /* 健康检查 */
       if (req.method === 'GET' && p === '/api/health') {
         const d = readJson(NOTES_FILE);
+        /* sync 要表达「云端真的配好了」，只判配置文件存在是不够的：
+           getSyncConfig() 会把没有 type 的旧格式文件补成一份 endpoint 为空的 s3 配置，
+           于是界面显示「云端同步已配置」，实际一保存就连接失败。 */
+        const sc = getSyncConfig();
+        const target = sc && (sc.type === 'webdav' ? sc.webdav : sc.s3);
         return send(res, 200, {
           ok: true,
           notes: d ? (d.notes || []).length : 0,
           tasks: d ? (d.tasks || []).length : 0,
-          sync: !!getSyncConfig(),
+          sync: !!(target && String(target.endpoint || '').trim()),
         });
       }
 
@@ -307,7 +367,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'PUT' && p === '/api/config') {
         let c;
-        try { c = JSON.parse((await readBody(req)).toString('utf8')); } catch { return send(res, 400, { ok: false, error: 'JSON 无效' }); }
+        try { c = JSON.parse((await readBody(req, MAX_BODY_CONFIG)).toString('utf8')); } catch { return send(res, 400, { ok: false, error: 'JSON 无效' }); }
         const type = c.type === 'webdav' ? 'webdav' : 's3';
         const prev = getSyncConfig() || {};
         const clean = { type, autoSync: !!c.autoSync };

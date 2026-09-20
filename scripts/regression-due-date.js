@@ -27,6 +27,10 @@ const dayOff = (n) => {
   await page.addInitScript(() => { try { localStorage.clear(); } catch {} });
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.waitForTimeout(700);
+  /* 侧栏折叠是用户偏好（存档可能带 sidebarCollapsed:true，整栏 visibility:hidden），
+     本套件测的是排版不是这个偏好 —— 只改 body class 强制展开，不写回存档。 */
+  await page.evaluate(() => document.body.classList.remove('sidebar-collapsed'));
+  await page.waitForTimeout(200);
   await page.click('#modeSwitch .mode-btn[data-mode="tasks"]');
   await page.waitForTimeout(400);
 
@@ -53,7 +57,18 @@ const dayOff = (n) => {
 
   ok('已选中一条任务', (await apiDue()) !== '(no-task)', `due="${await apiDue()}"`);
 
-  /* ---------- 1. 起点：清空 ---------- */
+  /* ---------- 1. 起点：清空 ----------
+     注意：清空按钮只在「有截止日期」时才可见。
+     种子数据里第一条任务的 due 可能是空的，此时无条件点它会超时。
+     这里先补一个截止日期，把状态拉到确定的起点，再走清空路径 ——
+     否则用例会随种子数据变化而随机失败（脆弱假设）。 */
+  if ((await apiDue()) === '') {
+    await openPicker();
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+  }
   await page.locator('#taskDueClear').click();
   await page.waitForTimeout(350);
   ok('清空后 input 为空', (await val()) === '', `input="${await val()}"`);
@@ -134,6 +149,9 @@ const dayOff = (n) => {
   await page.waitForTimeout(700);
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
+  /* reload 后 init() 会按存档里的 sidebarCollapsed 重新收起侧栏，需要再展开一次 */
+  await page.evaluate(() => document.body.classList.remove('sidebar-collapsed'));
+  await page.waitForTimeout(200);
   await page.click('#modeSwitch .mode-btn[data-mode="tasks"]');
   await page.waitForTimeout(400);
   await page.locator(`#taskLists .tk-item[data-id="${tid}"]`).click();

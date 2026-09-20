@@ -219,7 +219,13 @@ body.sidebar-collapsed .workspace { gap: 0; }
 html[data-theme="light"] #themeBtn .ico-sun { display: none; }
 html[data-theme="light"] #themeBtn .ico-moon { display: block; }
 
+/* 汉堡键只在移动端抽屉布局下有意义（桌面侧栏常驻）。
+   「返回列表」桌面端**只在侧栏折叠时**亮出：
+   - 侧栏常驻时列表就在旁边，返回键纯属冗余，还会把任务详情
+     「标题/备注图标/工具栏同一左基准」的排版不变量顶开 48px（layout 套件会红）；
+   - 折叠后没有任何列表可见，它才是唯一的出口，点它会重新展开侧栏（见 backToList）。 */
 .menu-btn, .back-btn { display: none; }
+body.sidebar-collapsed .back-btn { display: grid; }
 
 /* ---------- 侧栏 ---------- */
 .sidebar {
@@ -247,7 +253,11 @@ body.sidebar-collapsed .sidebar { width: 0; min-width: 0; opacity: 0; visibility
   padding: 14px 14px 8px;
 }
 
-.filters { display: flex; gap: 2px; }
+/* 页签组统一定为 14px 左基准，与 .side-head / .tag-bar 对齐。
+   此前 #filters 无 padding（0px），比相邻的标签栏（14px）靠左一整格，
+   在笔记视图下表现为「全部」页签溢出侧栏左沿。
+   flex-wrap：任务视图有 5 个页签，窄侧栏下必须折行，两个面板保持同一行为。 */
+.filters { display: flex; gap: 2px; flex-wrap: wrap; align-items: center; padding: 0 14px 8px; }
 
 .filter {
   height: 28px;
@@ -261,21 +271,57 @@ body.sidebar-collapsed .sidebar { width: 0; min-width: 0; opacity: 0; visibility
 .filter.active { color: var(--accent-strong); font-weight: 600; background: var(--accent-weak); }
 html[data-theme="dark"] .filter.active { color: #e79b7f; }
 
-.sort-wrap select {
-  appearance: none;
-  background: none;
-  border: none;
-  outline: none;
-  color: var(--text-2);
-  font-size: 12px;
-  padding: 4px 20px 4px 8px;
-  cursor: pointer;
-  border-radius: var(--r-sm);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a29f96' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
+/* ---------- 排序：图标按钮 + 自绘弹出菜单 ----------
+   换掉原生 <select> 的两个理由：
+   1. 原生下拉列表由系统绘制（蓝底高亮 + 系统字体），CSS 改不了，与设计系统脱节；
+   2. 它必须独占一行，把页签与标签栏之间的空间切碎。
+   现在按钮靠右对齐（`margin-left: auto`），与「置顶」在同一行右端。 */
+.sort-menu { position: relative; margin-left: auto; display: flex; }
+
+.sort-btn {
+  display: grid; place-items: center;
+  width: 26px; height: 26px; border-radius: var(--r-sm);
+  color: var(--text-3);
+  transition: background .15s ease, color .15s ease;
 }
-.sort-wrap select:hover { background-color: var(--surface-2); }
+.sort-btn svg {
+  width: 15px; height: 15px; fill: none; stroke: currentColor;
+  stroke-width: 1.9; stroke-linecap: round;
+}
+.sort-btn:hover { background: var(--surface-2); color: var(--text-1); }
+.sort-btn[aria-expanded="true"] { background: var(--accent-weak); color: var(--accent-strong); }
+
+/* 间距：原来 6px。标签栏就在页签行下方 12px 处，菜单展开后必然盖住 chips，
+   6px 时它的顶边几乎贴着页签行，读起来像「被 chips 挤住」而不是浮在上面。
+   拉到 10px + 内边距加 1px，配合 --shadow-2 才有明确的浮层层次。 */
+.sort-pop {
+  position: absolute; right: 0; top: calc(100% + 10px); z-index: 60;
+  min-width: 138px; padding: 6px; border-radius: var(--r-md);
+  background: var(--surface); border: 1px solid var(--border);
+  box-shadow: var(--shadow-2);
+  animation: pop-in .16s var(--ease) both;
+}
+.sort-pop[hidden] { display: none; }
+
+.sort-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; border-radius: var(--r-sm);
+  font-size: 12.5px; color: var(--text-2); text-align: left;
+  transition: background .14s ease, color .14s ease;
+}
+.sort-opt span { flex: 1; }
+.sort-opt:hover { background: var(--surface-2); color: var(--text-1); }
+.sort-opt.active { color: var(--accent-strong); font-weight: 600; }
+html[data-theme="dark"] .sort-opt.active { color: #e79b7f; }
+
+/* 勾选标记只给当前项显示，用 visibility 占位保证各项文字左沿对齐 */
+.sort-check {
+  width: 14px; height: 14px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2.4;
+  stroke-linecap: round; stroke-linejoin: round;
+  visibility: hidden;
+}
+.sort-opt.active .sort-check { visibility: visible; }
 
 /* 标签栏 */
 .tag-bar {
@@ -389,11 +435,48 @@ html[data-theme="light"] .note-item::after { background-image: linear-gradient(1
 
 .side-foot {
   flex-shrink: 0;
+  /* 左边计数、右下角「新建」：底栏从纯文本行变成一行控制条 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 10px 16px 12px;
   font-size: 11px;
   color: var(--text-3);
   border-top: 1px solid var(--border);
 }
+
+/* ---------- 侧栏底栏的「新建」 ----------
+   不做成悬浮 FAB：列表是滚动的，浮在上面的圆钮会压住最后一条笔记，
+   还要额外处理 z-index 与遮挡。放进底栏右侧既稳又不挡内容，
+   和 11px 的计数同一条基线，视觉上是一行而不是多一层。 */
+.side-new { position: relative; flex: none; }
+/* 就是一个 + 圆钮：不加文字、不做胶囊，跟 11px 的计数并排时不抢视线。
+   无障碍靠 aria-label / title，别再把文字塞回来。 */
+.side-new-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.side-new-btn svg {
+  width: 14px; height: 14px;
+  fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round;
+}
+.side-new-btn:hover, .side-new-btn[aria-expanded="true"] {
+  color: var(--accent-strong);
+  background: var(--accent-weak);
+  border-color: transparent;
+}
+/* 向上展开：.new-pop 默认 top: calc(100% + 8px) 向下，在底栏会被侧栏裁掉。
+   具体尺寸覆盖见下方「新建下拉」之后 —— 必须排在 .new-pop 基础规则**之后**，
+   否则 top / width 会被基础规则盖回去。 */
 
 /* ---------- 编辑器 ----------
    宽度分三层，各管一段：
@@ -778,6 +861,58 @@ html[data-theme="dark"] .modal-overlay { background: rgba(0, 0, 0, .5); }
 .check-field input { width: 15px; height: 15px; accent-color: var(--accent); }
 
 .modal-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+/* 「从云端恢复」第二次点击进入确认态：用危险色提示这是不可逆的覆盖动作 */
+.modal-actions .btn.danger { color: var(--danger, #d9534f); border-color: currentColor; }
+
+
+/* ---------- 设置面板：分区折叠 ----------
+   原先一次铺开 10 个输入框 + 5 个按钮，单屏信息量过大（评估报告建议 1）。
+   拆成「连接配置 / 同步操作」两块，默认只展开前者，状态存 localStorage。
+   折叠时标题右侧显示摘要（类型 + 目标），不展开也知道连到哪儿去了。 */
+.cfg-section {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  margin-bottom: 10px;
+  background: var(--surface);
+}
+.cfg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  border-radius: var(--r-md);
+  transition: background .15s ease;
+}
+.cfg-head:hover { background: var(--surface-2); }
+/* 摘要：占满剩余宽度，端点通常很长，必须单行省略 */
+.cfg-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cfg-caret {
+  width: 14px; height: 14px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2.1;
+  stroke-linecap: round; stroke-linejoin: round;
+  color: var(--text-3);
+  transition: transform .2s var(--ease);
+}
+.cfg-head[aria-expanded="true"] .cfg-caret { transform: rotate(180deg); }
+.cfg-body { padding: 0 12px 12px; }
+/* 「同步操作」区的按钮组是 body 的第一个子元素，14px 的 margin-top 会把标题
+   和按钮之间顶出一段空档（上面没有别的内容需要分隔）。 */
+.cfg-body > .modal-actions:first-child { margin-top: 2px; }
+/* 折叠态下 .section-title 的 4px 上边距会顶开标题与首行的距离，这里抹平 */
+.cfg-body > .section-title:first-child { margin-top: 2px; }
 
 .test-result {
   margin-top: 12px;
@@ -895,6 +1030,7 @@ html.theme-fade *::before, html.theme-fade *::after {
   .scrim.show { opacity: 1; }
 
   .editor-top { padding: 12px 12px 0; }
+  /* 移动端抽屉布局下返回键恒亮（列表收在抽屉里，必须给出口） */
   .back-btn { display: grid; }
   .task-head { padding: 12px 12px 0; }
   #titleInput { font-size: 20px; }
@@ -970,6 +1106,20 @@ html[data-theme="dark"] .mode-btn.active .mode-count { color: #fff; }
 .new-pop b { display: block; font-size: 13.5px; font-weight: 600; }
 .new-pop i { display: block; margin-top: 2px; font-size: 11.5px; font-style: normal; color: var(--text-3); }
 
+/* 侧栏底栏那份「新建」：基础 .new-pop 向下展开，这里改成向上。
+   必须排在上面 .new-pop 之后 —— 同权重下后写的才生效，
+   早期版本把它写在 .side-foot 附近（靠前），top/width 被基础规则盖回去。 */
+.side-new-pop {
+  top: auto;
+  bottom: calc(100% + 8px);
+  width: 196px;
+  animation: pop-up .18s var(--ease) both;
+}
+@keyframes pop-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.side-new-pop button { padding: 8px 9px; }
+.side-new-pop svg { width: 16px; height: 16px; }
+.side-new-pop b { font-size: 13px; }
+
 /* ---------- 同步类型切换 ---------- */
 .sync-type { display: flex; gap: 4px; padding: 3px; margin: 2px 0 10px; background: var(--surface-2); border-radius: 10px; }
 .sync-type-btn {
@@ -979,10 +1129,14 @@ html[data-theme="dark"] .mode-btn.active .mode-count { color: #fff; }
 .sync-type-btn.active { background: var(--surface); color: var(--text-1); box-shadow: var(--shadow-1); }
 
 /* ---------- 任务侧栏 ---------- */
-#taskFilters { padding: 0 12px 8px; flex-wrap: wrap; }
+/* 左基准随 .filters 统一为 14px；flex-wrap 已在 .filters 里声明，此处不再重复 */
+#taskFilters { padding: 0 14px 8px; }
 
+/* 外边距的左值随侧栏左基准统一为 14px（原为 12px）。
+   注意这里是 margin 不是 padding：.tk-quick 自带边框与底色，
+   缩进必须作用在它的外框上，否则会把自己的边框也缩进侧栏内部。 */
 .tk-quick {
-  display: flex; align-items: center; gap: 8px; margin: 2px 12px 12px;
+  display: flex; align-items: center; gap: 8px; margin: 2px 14px 12px;
   padding: 8px 10px; border-radius: var(--r-md);
   background: var(--surface); border: 1px solid var(--border);
   transition: border-color .18s var(--ease), box-shadow .18s var(--ease);

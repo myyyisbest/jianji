@@ -1,0 +1,9 @@
+# 行尾：仓库内统一存 LF，检出时按平台转换
+* text=auto eol=lf
+
+# 二进制文件不做任何转换
+*.png binary
+*.ico binary
+*.exe binary
+*.jpg binary
+*.svg text

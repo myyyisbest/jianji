@@ -3,6 +3,30 @@
   "productName": "简记",
   "version": "1.1.0",
   "description": "简记 · 简洁笔记应用（Web / Electron 桌面双形态，支持 Markdown 与 S3 云同步）",
+  "license": "MIT",
+  "author": "wuxujia",
+  "homepage": "https://github.com/myyyisbest/jianji#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myyyisbest/jianji.git"
+  },
+  "bugs": {
+    "url": "https://github.com/myyyisbest/jianji/issues"
+  },
+  "keywords": [
+    "notes",
+    "markdown",
+    "todo",
+    "electron",
+    "codemirror",
+    "s3",
+    "webdav",
+    "笔记",
+    "待办"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "main": "electron/main.js",
   "scripts": {
     "start": "node scripts/start-electron.js",
@@ -11,7 +35,9 @@
     "mock-s3": "node scripts/mock-s3.js",
     "test:due": "node scripts/regression-due-date.js",
     "test:layout": "node scripts/regression-layout.js",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "test:sort": "node scripts/regression-sort.js",
+    "test:sync": "node scripts/regression-sync.js"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -49,6 +75,14 @@
       {
         "from": "icon/jianji-icon.ico",
         "to": "icon.ico"
+      },
+      {
+        "from": "icon/jianji-tray-light.ico",
+        "to": "jianji-tray-light.ico"
+      },
+      {
+        "from": "icon/jianji-tray-dark.ico",
+        "to": "jianji-tray-dark.ico"
       }
     ],
     "win": {
