@@ -57,9 +57,16 @@ function writeJson(file, data) {
 }
 
 /* 读取：主档损坏（截断 / 半截 JSON）时回退 .bak —— 上一版已知良好档。
-   两个都读不出来才返回 null（调用方按「无存档」处理，前端走 seed()）。 */
-function readJson(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* 主档损坏，尝试 .bak */ }
+   两个都读不出来才返回 null（调用方按「无存档」处理，前端走 seed()）。
+
+   同步配置例外：它存的是 S3 / WebDAV 的明文凭据，而「删掉这个文件」是用户
+   断开同步的正常操作。对它回退 .bak，等于把凭据悄悄塞回去 —— 表现为配置永远
+   删不掉（删了主档，下次读又从 .bak 复活，界面依旧显示「云端同步已配置」，
+   页面照旧去连一个已经不存在的端点）。存档正好相反，.bak 是防丢数据的兜底，
+   必须保留。所以只有存档走回退，配置不走。 */
+function readJson(file, allowBackup = true) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* 主档损坏或不存在 */ }
+  if (!allowBackup) return null;
   try {
     const d = JSON.parse(fs.readFileSync(`${file}.bak`, 'utf8'));
     console.error(`[jianji] 主档损坏，已从 ${path.basename(file)}.bak 恢复读取`);
@@ -136,7 +143,7 @@ function s3Request(method, cfg, { body = null, list = false } = {}) {
 /* 存储结构：{ type: 's3'|'webdav', autoSync, s3: {...}, webdav: {...} }
    旧版平铺 S3 配置读取时自动迁移，无需手动处理 */
 function getSyncConfig() {
-  const raw = readJson(CONFIG_FILE);
+  const raw = readJson(CONFIG_FILE, false);
   if (!raw) return null;
   if ((raw.type === 's3' || raw.type === 'webdav') && (raw.s3 || raw.webdav)) return raw;
   // 旧格式：平铺 S3 字段
