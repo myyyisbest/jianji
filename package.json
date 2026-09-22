@@ -4,7 +4,7 @@
   "version": "1.2.0",
   "description": "简记 · 简洁笔记应用（Web / Electron 桌面双形态，支持 Markdown 与 S3 云同步）",
   "license": "MIT",
-  "author": "wuxujia",
+  "author": "wuxujia <162685697+myyyisbest@users.noreply.github.com>",
   "homepage": "https://github.com/myyyisbest/jianji#readme",
   "repository": {
     "type": "git",
@@ -172,7 +172,8 @@
           ]
         }
       ],
-      "artifactName": "jianji-${version}-linux-${arch}.${ext}"
+      "artifactName": "jianji-${version}-linux-${arch}.${ext}",
+      "maintainer": "wuxujia <162685697+myyyisbest@users.noreply.github.com>"
     }
   }
 }
