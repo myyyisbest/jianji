@@ -18,6 +18,9 @@
 | `npm run web` | 起 Web 服务（默认 `:8642`，`PORT` / `HOST` 可改） |
 | `npm start` | 起 Electron 桌面窗口 |
 | `npm run dist` | electron-builder 打包（产物在 `dist/`） |
+| `npm run dist:win` | 打 Windows x64 包（安装包 + 便携版） |
+| `npm run dist:mac` | 打 Mac 包（arm64 + x64），**只能在 macOS 上跑** |
+| `npm run dist:linux` | 打 Linux x64 包（AppImage + deb） |
 | `npm run build:cm` | esbuild 重打包编辑器内核 → `vendor/cm6.js` |
 | `npm run mock-s3` | 起假 S3 |
 | `npm test` | 跑全部四组回归（自己拉起服务、自动清理 mock 残留，91 项） |
@@ -27,6 +30,29 @@
 | `npm run test:sync` | 回归：云端同步（19 项，自起 mock + 独立服务） |
 
 前端是原生 JS，**没有构建步骤**：改完 `css/`、`js/`、`index.html` 刷新即生效。只有改了 `build/cm6-entry.js` 才需要 `npm run build:cm`。
+
+## 发布流程
+
+版本号写在 `package.json`（同步改 `CHANGELOG.md`），然后：
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+推标签会触发 `.github/workflows/release.yml`：分别在 Windows / macOS / Ubuntu runner 上打包，
+再由 `release` job 把产物挂到对应 GitHub Release（仅 tag 触发时发布；手动 `workflow_dispatch` 只上传 Artifacts）。
+
+想先试打包、暂时不发布：Actions →「打包发布」→ Run workflow，
+产物在当次运行页的 Artifacts 里下载。
+
+**为什么 Mac 包必须由 CI 打**：electron-builder 在非 macOS 上会直接报
+`Build for macOS is supported only on macOS`，Windows / Linux 本机打不出来。
+
+**关于签名**：现在 `mac.identity = null`，不签名也不公证，用户首次打开会被 Gatekeeper 拦
+（绕过办法见 README）。要正式签名需要 Apple 开发者账号（99 美元/年），拿到后在仓库 Secrets
+配 `CSC_LINK` / `CSC_KEY_PASSWORD` 与 `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` /
+`APPLE_TEAM_ID`，再把 `mac.identity` 改成证书名称、`gatekeeperAssess` 改回 `true`。
 
 ## 回归测试
 
