@@ -39,7 +39,8 @@
     "test:layout": "node scripts/regression-layout.js",
     "dist": "electron-builder",
     "test:sort": "node scripts/regression-sort.js",
-    "test:sync": "node scripts/regression-sync.js"
+    "test:sync": "node scripts/regression-sync.js",
+    "test:unit": "node --test test/*.test.js"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -63,6 +64,7 @@
     "files": [
       "electron/",
       "server.js",
+      "lib/",
       "index.html",
       "css/",
       "js/",

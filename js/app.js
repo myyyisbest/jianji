@@ -1422,6 +1422,20 @@ function setSyncType(type) {
   renderSectionSummaries();
 }
 
+/* 密钥哨兵：与服务端 SECRET_SENTINEL 一致。已保存的密钥不进 DOM。 */
+const SECRET_SENTINEL = '********';
+const SECRET_PLACEHOLDER = '已保存（留空保持不变）';
+let secretWasSet = false;
+let passwordWasSet = false;
+
+function applySecretField(input, { set, value }) {
+  const has = !!(set || (value && value === SECRET_SENTINEL) || (value && value !== SECRET_SENTINEL && value.length > 0));
+  /* 即便旧后端仍回传明文，也不写入 value —— 只记「已保存」并用哨兵回传。 */
+  input.value = '';
+  input.placeholder = has ? SECRET_PLACEHOLDER : '';
+  return has;
+}
+
 async function fillConfigForm() {
   const c = await Backend.getConfig();
   setSyncType(c?.type || 's3');
@@ -1429,11 +1443,17 @@ async function fillConfigForm() {
   $('#cfgRegion').value = c?.s3?.region || '';
   $('#cfgBucket').value = c?.s3?.bucket || '';
   $('#cfgAccessKey').value = c?.s3?.accessKeyId || '';
-  $('#cfgSecret').value = c?.s3?.secretAccessKey || '';
+  secretWasSet = applySecretField($('#cfgSecret'), {
+    set: c?.s3?.secretAccessKeySet,
+    value: c?.s3?.secretAccessKey,
+  });
   $('#cfgObject').value = c?.s3?.objectKey || '';
   $('#cfgWdEndpoint').value = c?.webdav?.endpoint || '';
   $('#cfgWdUser').value = c?.webdav?.username || '';
-  $('#cfgWdPass').value = c?.webdav?.password || '';
+  passwordWasSet = applySecretField($('#cfgWdPass'), {
+    set: c?.webdav?.passwordSet,
+    value: c?.webdav?.password,
+  });
   $('#cfgWdPath').value = c?.webdav?.remotePath || '';
   $('#cfgAutoSync').checked = !!(c && c.autoSync);
   $('#cfgAutoPull').checked = state.settings.autoPull !== false;
@@ -1443,6 +1463,14 @@ async function fillConfigForm() {
 }
 
 function configFromForm() {
+  const secretRaw = $('#cfgSecret').value;
+  const passRaw = $('#cfgWdPass').value;
+  const secretAccessKey = (!secretRaw || secretRaw === SECRET_SENTINEL)
+    ? (secretWasSet ? SECRET_SENTINEL : '')
+    : secretRaw;
+  const password = (!passRaw || passRaw === SECRET_SENTINEL)
+    ? (passwordWasSet ? SECRET_SENTINEL : '')
+    : passRaw;
   return {
     type: syncType,
     autoSync: $('#cfgAutoSync').checked,
@@ -1451,13 +1479,13 @@ function configFromForm() {
       region: $('#cfgRegion').value.trim(),
       bucket: $('#cfgBucket').value.trim(),
       accessKeyId: $('#cfgAccessKey').value.trim(),
-      secretAccessKey: $('#cfgSecret').value,
+      secretAccessKey,
       objectKey: $('#cfgObject').value.trim() || 'notes.json',
     },
     webdav: {
       endpoint: $('#cfgWdEndpoint').value.trim(),
       username: $('#cfgWdUser').value.trim(),
-      password: $('#cfgWdPass').value,
+      password,
       remotePath: $('#cfgWdPath').value.trim() || '/notes.json',
     },
   };
@@ -1494,43 +1522,10 @@ async function pushCloud() {
   else toast(`推送失败：${r.error || '未知错误'}`);
 }
 
-/* ---------------- 多端合并 ---------------- */
-function mergeCollection(localArr, remoteArr, tombs, kind) {
-  const map = new Map(localArr.map(x => [x.id, x]));
-  let changed = 0;
-  for (const r of (remoteArr || [])) {
-    const l = map.get(r.id);
-    if (!l) { map.set(r.id, r); changed++; }
-    else if ((r.updatedAt || 0) > (l.updatedAt || 0)) { map.set(r.id, r); changed++; }
-  }
-  for (const [id, t] of tombs) {
-    if (t.kind !== kind) continue;
-    const x = map.get(id);
-    if (x && (x.updatedAt || 0) <= (t.deletedAt || 0)) { map.delete(id); changed++; }
-  }
-  return { arr: [...map.values()], changed };
-}
-
-function mergeArchives(local, remote) {
-  const tombs = new Map();
-  for (const t of [...(local.deleted || []), ...(remote.deleted || [])]) {
-    const cur = tombs.get(t.id);
-    const tt = { ...t, kind: t.kind || 'note' };
-    if (!cur || (tt.deletedAt || 0) >= (cur.deletedAt || 0)) tombs.set(t.id, tt);
-  }
-  const n = mergeCollection(local.notes, remote.notes, tombs, 'note');
-  const k = mergeCollection(local.tasks, remote.tasks, tombs, 'task');
-  const c = mergeCollection(local.lists, remote.lists, new Map(), 'list');
-
-  const settings = (remote.savedAt || 0) > (local.savedAt || 0)
-    ? { ...local.settings, ...(remote.settings || {}) }
-    : { ...remote.settings, ...local.settings };
-
-  return {
-    notes: n.arr, tasks: k.arr, lists: c.arr,
-    deleted: [...tombs.values()], settings,
-    changed: n.changed + k.changed + c.changed,
-  };
+/* ---------------- 多端合并（实现见 js/merge.js） ---------------- */
+const { mergeCollection, mergeArchives } = globalThis.JianjiMerge || {};
+if (typeof mergeArchives !== 'function') {
+  console.error('[jianji] JianjiMerge 未加载：请确认 index.html 在 app.js 之前引入 js/merge.js');
 }
 
 function applySettings(s) {

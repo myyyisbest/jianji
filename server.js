@@ -17,14 +17,14 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const { signS3Headers } = require('./lib/sigv4');
 
 const PORT = Number(process.env.PORT) || 8642;
 /* 默认只监听本机回环。
-   原先默认 0.0.0.0：同一局域网内的任何设备都能直接 GET /api/config 拿到
-   S3/WebDAV 明文凭据、PUT /api/notes 覆盖或清空你的笔记。笔记是私人数据，
-   后端又是零鉴权的，暴露面必须收到最小。确需局域网访问时用
-   HOST=0.0.0.0 node server.js 显式打开（README 有说明）。 */
+   原先默认 0.0.0.0：同一局域网内的任何设备都能直接访问零鉴权 API，
+   PUT /api/notes 覆盖或清空笔记；GET /api/config 虽已脱敏密钥，
+   仍会暴露 accessKeyId / 用户名等。笔记是私人数据，暴露面必须最小。
+   确需局域网访问时用 HOST=0.0.0.0 node server.js 显式打开（会打安全警告）。 */
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
@@ -74,9 +74,8 @@ function readJson(file, allowBackup = true) {
   } catch { return null; }
 }
 
-/* ---------------- AWS SigV4 ---------------- */
-const sha256hex = b => crypto.createHash('sha256').update(b).digest('hex');
-const hmac = (key, buf) => crypto.createHmac('sha256', key).update(buf).digest();
+/* ---------------- AWS SigV4（实现见 lib/sigv4.js） ---------------- */
+const SECRET_SENTINEL = '********';
 
 function s3Request(method, cfg, { body = null, list = false } = {}) {
   return new Promise((resolve, reject) => {
@@ -92,33 +91,17 @@ function s3Request(method, cfg, { body = null, list = false } = {}) {
       : `${basePath}/${cfg.bucket}/${objectKey}`.replace(/\/{2,}/g, '/');
 
     const payload = body === null ? '' : body;
-    const payloadHash = sha256hex(payload);
-    const amzDate = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const dateStamp = amzDate.slice(0, 8);
-    const region = cfg.region || 'us-east-1';
-    const service = 's3';
-
-    // 仅参与签名的头；content-length 属于传输头，按 AWS SDK 惯例不签名（只发送）
-    const headers = {
+    const signed = signS3Headers({
+      method,
+      canonicalUri,
+      payload,
+      accessKeyId: cfg.accessKeyId,
+      secretAccessKey: cfg.secretAccessKey,
+      region: cfg.region || 'us-east-1',
       host: hostHeader,
-      'x-amz-date': amzDate,
-      'x-amz-content-sha256': payloadHash,
-    };
-
-    const signedHeaders = Object.keys(headers).sort().join(';');
-    const canonicalHeaders = Object.keys(headers).sort().map(h => `${h}:${headers[h]}\n`).join('');
-    const canonicalRequest = [method, canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
-    const scope = `${dateStamp}/${region}/${service}/aws4_request`;
-    const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256hex(canonicalRequest)].join('\n');
-
-    const kDate = hmac('AWS4' + cfg.secretAccessKey, dateStamp);
-    const kRegion = hmac(kDate, region);
-    const kService = hmac(kRegion, service);
-    const kSigning = hmac(kService, 'aws4_request');
-    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
-    const authorization = `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-    const sendHeaders = { ...headers, Authorization: authorization };
+    });
+    // content-length 属于传输头，按 AWS SDK 惯例不签名（只发送）
+    const sendHeaders = { ...signed.headers };
     if (body !== null) sendHeaders['content-length'] = Buffer.byteLength(payload);
 
     const req = (endpoint.protocol === 'https:' ? https : http).request({
@@ -160,6 +143,39 @@ function getSyncConfig() {
     },
     webdav: null,
   };
+}
+
+/* API 响应脱敏：磁盘仍存明文；仅对外读接口把密钥换成哨兵。
+   secretAccessKeySet / passwordSet 让前端知道「已保存」而无需把真值塞进 DOM。 */
+function redactSyncConfig(cfg) {
+  if (!cfg) return null;
+  const out = { ...cfg };
+  if (out.s3) {
+    const has = !!(out.s3.secretAccessKey);
+    out.s3 = {
+      ...out.s3,
+      secretAccessKey: has ? SECRET_SENTINEL : '',
+      secretAccessKeySet: has,
+    };
+  }
+  if (out.webdav) {
+    const has = !!(out.webdav.password);
+    out.webdav = {
+      ...out.webdav,
+      password: has ? SECRET_SENTINEL : '',
+      passwordSet: has,
+    };
+  }
+  return out;
+}
+
+/* PUT 时：客户端回传哨兵 / 空串（且磁盘已有旧值）→ 保留原先密钥，避免把 **** 写进文件。 */
+function resolveSecretField(incoming, previous) {
+  const v = incoming == null ? '' : String(incoming);
+  const prev = previous == null ? '' : String(previous);
+  if (v === SECRET_SENTINEL) return prev;
+  if (v === '' && prev) return prev;
+  return v;
 }
 
 function activeSync(cfg) {
@@ -369,7 +385,7 @@ const server = http.createServer(async (req, res) => {
 
       /* 同步配置（S3 / WebDAV） */
       if (req.method === 'GET' && p === '/api/config') {
-        return send(res, 200, { ok: true, config: getSyncConfig() });
+        return send(res, 200, { ok: true, config: redactSyncConfig(getSyncConfig()) });
       }
 
       if (req.method === 'PUT' && p === '/api/config') {
@@ -381,12 +397,13 @@ const server = http.createServer(async (req, res) => {
 
         if (c.s3 || prev.s3) {
           const s = c.s3 || prev.s3 || {};
+          const prevS3 = prev.s3 || {};
           const s3 = {
             endpoint: String(s.endpoint || '').trim(),
             region: String(s.region || '').trim(),
             bucket: String(s.bucket || '').trim(),
             accessKeyId: String(s.accessKeyId || '').trim(),
-            secretAccessKey: String(s.secretAccessKey || '').trim(),
+            secretAccessKey: resolveSecretField(s.secretAccessKey, prevS3.secretAccessKey),
             objectKey: String(s.objectKey || DEFAULT_OBJECT).trim().replace(/^\/+/, ''),
           };
           if (s3.endpoint && !/^https?:\/\//.test(s3.endpoint)) s3.endpoint = 'https://' + s3.endpoint;
@@ -394,10 +411,11 @@ const server = http.createServer(async (req, res) => {
         }
         if (c.webdav || prev.webdav) {
           const w = c.webdav || prev.webdav || {};
+          const prevWd = prev.webdav || {};
           const webdav = {
             endpoint: String(w.endpoint || '').trim(),
             username: String(w.username || '').trim(),
-            password: String(w.password || ''),
+            password: resolveSecretField(w.password, prevWd.password),
             remotePath: ('/' + String(w.remotePath || DEFAULT_OBJECT).trim().replace(/^\/+/, '')),
           };
           if (webdav.endpoint && !/^https?:\/\//.test(webdav.endpoint)) webdav.endpoint = 'https://' + webdav.endpoint;
@@ -417,7 +435,7 @@ const server = http.createServer(async (req, res) => {
           }
         }
         writeJson(CONFIG_FILE, clean);
-        return send(res, 200, { ok: true, config: clean });
+        return send(res, 200, { ok: true, config: redactSyncConfig(clean) });
       }
 
       /* 云端存档只读（前端拿去与本地合并，不直接覆盖服务器） */
@@ -567,12 +585,27 @@ const server = http.createServer(async (req, res) => {
 
 /* ---------------- 启动 ---------------- */
 /* 两种使用方式：
-   1) 直接运行：node server.js        —— 监听 PORT/HOST 环境变量（默认 8642 / 0.0.0.0）
+   1) 直接运行：node server.js        —— 监听 PORT/HOST 环境变量（默认 8642 / 127.0.0.1）
    2) 被 Electron 主进程 require      —— start({ port: 0, host: '127.0.0.1' })，随机端口仅本机回环 */
+function isLoopbackHost(h) {
+  const x = String(h || '').toLowerCase();
+  return x === '127.0.0.1' || x === '::1' || x === 'localhost';
+}
+
 function start({ port, host, quiet } = {}) {
   ensureDataDir();
   const listenPort = port === undefined ? PORT : port;   // 显式传 0 表示随机端口
   const listenHost = host === undefined ? HOST : host;
+  if (!isLoopbackHost(listenHost)) {
+    console.error('');
+    console.error('[jianji] !!!!! 安全警告 !!!!!');
+    console.error(`[jianji] 当前监听地址为 ${listenHost}（非本机回环）。`);
+    console.error('[jianji] 本后端零鉴权：局域网内任何人可访问 /api/notes 读写笔记，');
+    console.error('[jianji] 且 GET /api/config 会暴露同步凭据是否已配置（密钥已脱敏为 ********，');
+    console.error('[jianji] 但 accessKeyId / 用户名等仍可见）。请确认你信任该网络，');
+    console.error('[jianji] 或改回 HOST=127.0.0.1（默认）。');
+    console.error('');
+  }
   server.listen(listenPort, listenHost, () => {
     if (!quiet) {
       console.log(`简记服务已启动: http://localhost:${server.address().port}`);

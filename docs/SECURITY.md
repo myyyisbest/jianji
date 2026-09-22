@@ -9,6 +9,8 @@
 | 防线 | 说明 |
 | --- | --- |
 | 默认仅监听回环 | `HOST` 默认 `127.0.0.1`（原为 `0.0.0.0` —— 局域网内任何设备都能拿到明文 S3/WebDAV 凭据、覆盖你的笔记）。确需局域网访问：`HOST=0.0.0.0 node server.js`，自担风险 |
+| API 响应脱敏 | `GET`/`PUT` `/api/config` 把 `secretAccessKey` / WebDAV `password` 换成 `********`，并附 `secretAccessKeySet` / `passwordSet`；磁盘仍存明文。客户端回传哨兵或空串时服务端保留旧密钥 |
+| 非回环启动警告 | `start()` 若 `HOST` 不是 `127.0.0.1` / `::1` / `localhost`，向 stderr 打印多行安全警告（零鉴权 + 配置接口暴露面） |
 | 请求体大小限制 | `/api/notes` 32 MB、`/api/config` 256 KB，超限返回 413 并断开连接（原先无上限，一个超大 POST 就能吃满进程内存） |
 | 存档原子写入 | `writeJson` 先写 `.tmp` 再 `rename`，崩溃/断电不会留下半截 JSON；覆盖前把上一版留为 `notes.json.bak` |
 | 主档损坏自动回退 | `readJson` 主档解析失败时回退 `.bak`，避免「半截 JSON → `seed()` 静默重建 → 用户存档被顶掉」的事故链 |

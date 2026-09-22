@@ -7,10 +7,17 @@
 
 ### 新增
 
+- 单元测试：`npm run test:unit`（`node --test`）覆盖多端合并、SigV4 签名、Markdown 转义 / 链接白名单
+- 将 `mergeCollection` / `mergeArchives` 抽到 `js/merge.js`，SigV4 抽到 `lib/sigv4.js`（server 仍零运行时依赖）
 - `npm test`：一条命令跑完四组回归（91 项）。自动拉起 `:8642` 服务并在结束后收尾，
   并自动挪走上一轮残留的 mock 同步配置 —— 此前这一步只能手工把 `data/s3-config.json` 置空，
   忘做了就会看到一堆 502，「无控制台错误」断言全部挂掉
 - GitHub Actions CI（`.github/workflows/ci.yml`）：`main` / `dev` 的 push 与 PR 自动跑回归套件
+
+### 安全
+
+- `GET` / `PUT` `/api/config` 对 `secretAccessKey` / WebDAV `password` 脱敏为 `********`（磁盘仍明文）；回传哨兵时保留旧值
+- 非回环 `HOST` 启动时向 stderr 打印安全警告
 
 ### 修复
 
@@ -22,6 +29,7 @@
 
 ### 变更
 
+- README 平台徽章与下载说明：官方预构建仅 Windows x64；macOS / Linux 从源码运行
 - 四个回归脚本不再各自写死 Edge 路径与 `headless: false`，统一收敛到 `scripts/lib/browser.js`，
   可用 `JIANJI_BROWSER` / `JIANJI_HEADLESS=1` 覆盖。这是它们能在 CI 上跑起来的前提 ——
   之前这套用例只在作者本机可执行
