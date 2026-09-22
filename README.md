@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT">
   <img src="https://img.shields.io/github/v/release/myyyisbest/jianji?label=release" alt="Release">
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-Windows%20x64%20(installer)%20%C2%B7%20macOS%2FLinux%20(source)-lightgrey.svg" alt="Platform: Windows x64 installer; macOS/Linux from source">
   <img src="https://img.shields.io/badge/editor-CodeMirror%206-blue.svg" alt="Editor">
   <img src="https://img.shields.io/badge/dependencies-0%20(runtime)-orange.svg" alt="Runtime dependencies">
 </p>
@@ -67,7 +67,9 @@
 
 ### 桌面应用（Electron）
 
-不想从源码构建？直接从 [Releases](https://github.com/myyyisbest/jianji/releases/latest) 下载 Windows 安装包或便携版（约 88 MB，x64）。
+**官方预构建包目前仅提供 Windows x64**（安装版 + 便携版，约 88 MB）。从 [Releases](https://github.com/myyyisbest/jianji/releases/latest) 下载即可。
+
+macOS / Linux **没有官方安装包**，请从源码运行（见下方）或自行 `npm run dist` 打包。
 
 ```bash
 npm install     # 首次：安装 electron / esbuild
@@ -76,10 +78,10 @@ npm start       # 启动桌面窗口
 
 数据存于系统用户数据目录（Windows 为 `%APPDATA%/简记/data`），与应用代码分离。
 
-打包独立可执行文件：
+在 Windows 上打包独立可执行文件：
 
 ```bash
-npm run dist    # 产物在 dist/
+npm run dist    # 产物在 dist/（当前 CI / Release 仅发布 Windows x64）
 ```
 
 | 产物 | 说明 |
@@ -87,7 +89,7 @@ npm run dist    # 产物在 dist/
 | `jianji-<version>-setup.exe` | NSIS 安装程序，可选安装目录、建桌面 / 开始菜单快捷方式 |
 | `jianji-<version>-portable.exe` | 免安装单文件，双击即用 |
 
-### Web 服务
+### Web 服务 / 源码运行（全平台）
 
 ```bash
 npm run web     # 等价于 node server.js
@@ -136,7 +138,11 @@ node scripts/mock-webdav.js   # Mock WebDAV（:9700，Basic Auth）
 ├── css/style.css           # 简洁风格设计系统（双主题）
 ├── js/
 │   ├── app.js              # 前端逻辑（渲染 / 任务 / 同步设置 / 桌面桥接）
+│   ├── merge.js            # 多端合并纯函数（浏览器 / Node 共用）
 │   └── markdown.js         # 零依赖 MD→HTML 渲染器
+├── lib/
+│   └── sigv4.js            # AWS SigV4 签名（server.js 引用，可单测）
+├── test/                   # Node 原生单元测试（merge / sigv4 / markdown）
 ├── build/cm6-entry.js      # 编辑器内核源码（即时预览扩展、GFM 解析、快捷键）
 ├── vendor/cm6.js           # 上述源码的 esbuild 产物，运行时直接用（入库以便 clone 即跑）
 ├── electron/
