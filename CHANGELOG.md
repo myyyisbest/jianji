@@ -5,8 +5,18 @@
 
 ## [未发布]
 
+## [1.2.0] - 2026-09-22
+
 ### 新增
 
+- **官方多平台安装包**：`.github/workflows/release.yml` 在 Windows / macOS / Ubuntu runner
+  上分别打包，推 `v*` 标签即自动挂到 Release；也可 `workflow_dispatch` 只出产物不发布
+  - Windows x64：NSIS 安装包 + 便携版
+  - macOS：`.dmg` / `.zip`，同时出 Apple Silicon（arm64）与 Intel（x64）
+  - Linux x64：`.AppImage` + `.deb`
+  - 注意：Mac 包**目前未签名、未公证**，首次打开需右键「打开」或执行一次
+    `xattr -cr /Applications/简记.app`（详见 README）
+- `npm run dist:win` / `dist:mac` / `dist:linux`：按平台打包的快捷入口
 - 单元测试：`npm run test:unit`（`node --test`）覆盖多端合并、SigV4 签名、Markdown 转义 / 链接白名单
 - 将 `mergeCollection` / `mergeArchives` 抽到 `js/merge.js`，SigV4 抽到 `lib/sigv4.js`（server 仍零运行时依赖）
 - `npm test`：一条命令跑完四组回归（91 项）。自动拉起 `:8642` 服务并在结束后收尾，
@@ -26,14 +36,17 @@
   界面依旧显示「云端同步已配置」，页面照旧去连一个已经不存在的端点
   （回归套件里表现为一堆 502、「无控制台错误」断言全挂）。
   现在 `.bak` 兜底只用于笔记存档（那是防丢数据的，必须留），同步配置不走回退
+- 托盘图标取值顺序改为按平台区分：Windows 仍优先 .ico（按 DPI 挑档），
+  macOS 改为优先 32px PNG —— 菜单栏的 NSImage 读 .ico 取不到合适档位，图标发虚
 
 ### 变更
 
-- README 平台徽章与下载说明：官方预构建仅 Windows x64；macOS / Linux 从源码运行
+- README 恢复 Windows / macOS / Linux 官方下载说明与平台徽章；补充未签名 Mac 的 Gatekeeper 绕过办法
 - 四个回归脚本不再各自写死 Edge 路径与 `headless: false`，统一收敛到 `scripts/lib/browser.js`，
   可用 `JIANJI_BROWSER` / `JIANJI_HEADLESS=1` 覆盖。这是它们能在 CI 上跑起来的前提 ——
   之前这套用例只在作者本机可执行
 - `package.json` 补 `mock-webdav` 脚本（`scripts/mock-webdav.js` 一直存在但没有入口）
+- `extraResources` 补上 32px PNG 托盘图标，供 macOS / Linux 打包后使用
 
 ## [1.1.0] - 2026-09-20
 

@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT">
   <img src="https://img.shields.io/github/v/release/myyyisbest/jianji?label=release" alt="Release">
-  <img src="https://img.shields.io/badge/platform-Windows%20x64%20(installer)%20%C2%B7%20macOS%2FLinux%20(source)-lightgrey.svg" alt="Platform: Windows x64 installer; macOS/Linux from source">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform: Windows | macOS | Linux">
   <img src="https://img.shields.io/badge/editor-CodeMirror%206-blue.svg" alt="Editor">
   <img src="https://img.shields.io/badge/dependencies-0%20(runtime)-orange.svg" alt="Runtime dependencies">
 </p>
@@ -67,27 +67,55 @@
 
 ### 桌面应用（Electron）
 
-**官方预构建包目前仅提供 Windows x64**（安装版 + 便携版，约 88 MB）。从 [Releases](https://github.com/myyyisbest/jianji/releases/latest) 下载即可。
+不想从源码构建？直接从 [Releases](https://github.com/myyyisbest/jianji/releases/latest) 下载：
 
-macOS / Linux **没有官方安装包**，请从源码运行（见下方）或自行 `npm run dist` 打包。
+- **Windows**：安装包或便携版（约 88 MB，x64）
+- **macOS**：`.dmg` 或 `.zip`，Apple Silicon（`arm64`）与 Intel（`x64`）各一份
+- **Linux**：`.AppImage` 与 `.deb`（x64）
 
 ```bash
 npm install     # 首次：安装 electron / esbuild
 npm start       # 启动桌面窗口
 ```
 
-数据存于系统用户数据目录（Windows 为 `%APPDATA%/简记/data`），与应用代码分离。
+数据存于系统用户数据目录（Windows 为 `%APPDATA%/简记/data`，
+macOS 为 `~/Library/Application Support/简记/data`，
+Linux 为 `~/.config/简记/data`），与应用代码分离。
 
-在 Windows 上打包独立可执行文件：
+> **macOS 首次打开提示「已损坏 / 无法验证开发者」**
+> 当前 Mac 包**未签名、未公证**（Apple 开发者账号年费 99 美元，暂未办理）。
+> 这不是文件坏了，是 Gatekeeper 拦的。二选一：
+>
+> ```bash
+> # 方式一（推荐）：去掉下载时打上的隔离属性
+> xattr -cr /Applications/简记.app
+> ```
+>
+> 方式二：在访达里**右键**点 `简记.app` → 「打开」，弹窗里再点一次「打开」。
+> 直接双击是不行的。只需做一次，之后正常启动。
+
+打包独立可执行文件（产物在 `dist/`）：
 
 ```bash
-npm run dist    # 产物在 dist/（当前 CI / Release 仅发布 Windows x64）
+npm run dist          # 按当前平台打包
+npm run dist:win      # Windows x64（安装包 + 便携版）
+npm run dist:mac      # macOS arm64 + x64（只能在 macOS 上跑）
+npm run dist:linux    # Linux x64（AppImage + deb）
 ```
+
+> Windows / Linux 上执行 `npm run dist:mac` 会直接失败：
+> `Build for macOS is supported only on macOS`。这是 electron-builder 的硬限制，
+> Mac 包请在 Mac 上打，或用仓库里的 `release.yml` 交给 GitHub Actions。
 
 | 产物 | 说明 |
 | --- | --- |
 | `jianji-<version>-setup.exe` | NSIS 安装程序，可选安装目录、建桌面 / 开始菜单快捷方式 |
 | `jianji-<version>-portable.exe` | 免安装单文件，双击即用 |
+| `jianji-<version>-mac-arm64.dmg` | macOS 磁盘映像，Apple Silicon（M1 及以后） |
+| `jianji-<version>-mac-x64.dmg` | macOS 磁盘映像，Intel 芯片 |
+| `jianji-<version>-mac-<arch>.zip` | 免安装压缩包，解压后拖进「应用程序」即可 |
+| `jianji-<version>-linux-x64.AppImage` | Linux AppImage，chmod +x 后直接运行 |
+| `jianji-<version>-linux-x64.deb` | Debian / Ubuntu 安装包 |
 
 ### Web 服务 / 源码运行（全平台）
 

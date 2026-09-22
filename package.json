@@ -1,7 +1,7 @@
 {
   "name": "jianji",
   "productName": "简记",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "简记 · 简洁笔记应用（Web / Electron 桌面双形态，支持 Markdown 与 S3 云同步）",
   "license": "MIT",
   "author": "wuxujia",
@@ -38,6 +38,9 @@
     "test:due": "node scripts/regression-due-date.js",
     "test:layout": "node scripts/regression-layout.js",
     "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac --arm64 --x64",
+    "dist:linux": "electron-builder --linux --x64",
+    "dist:win": "electron-builder --win --x64",
     "test:sort": "node scripts/regression-sort.js",
     "test:sync": "node scripts/regression-sync.js",
     "test:unit": "node --test test/*.test.js"
@@ -87,6 +90,14 @@
       {
         "from": "icon/jianji-tray-dark.ico",
         "to": "jianji-tray-dark.ico"
+      },
+      {
+        "from": "icon/jianji-tray-32-light.png",
+        "to": "jianji-tray-32-light.png"
+      },
+      {
+        "from": "icon/jianji-tray-32-dark.png",
+        "to": "jianji-tray-32-dark.png"
       }
     ],
     "win": {
@@ -123,11 +134,51 @@
     },
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "icon/jianji-icon-512.png"
+      "icon": "icon/jianji-icon-512.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "jianji-${version}-mac-${arch}.${ext}",
+      "identity": null,
+      "gatekeeperAssess": false
     },
     "linux": {
       "icon": "icon/jianji-icon-512.png",
-      "category": "Office"
+      "category": "Office",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "jianji-${version}-linux-${arch}.${ext}",
+      "desktop": {
+        "Name": "简记",
+        "Comment": "本地优先的 Markdown 笔记与待办",
+        "Categories": "Office;Utility;"
+      },
+      "synopsis": "本地优先的 Markdown 笔记与待办"
     }
   }
 }
