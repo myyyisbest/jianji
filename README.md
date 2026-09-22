@@ -114,8 +114,8 @@ npm run dist:linux    # Linux x64（AppImage + deb）
 | `jianji-<version>-mac-arm64.dmg` | macOS 磁盘映像，Apple Silicon（M1 及以后） |
 | `jianji-<version>-mac-x64.dmg` | macOS 磁盘映像，Intel 芯片 |
 | `jianji-<version>-mac-<arch>.zip` | 免安装压缩包，解压后拖进「应用程序」即可 |
-| `jianji-<version>-linux-x64.AppImage` | Linux AppImage，chmod +x 后直接运行 |
-| `jianji-<version>-linux-x64.deb` | Debian / Ubuntu 安装包 |
+| `jianji-<version>-linux-x86_64.AppImage` | Linux AppImage，chmod +x 后直接运行 |
+| `jianji-<version>-linux-amd64.deb` | Debian / Ubuntu 安装包 |
 
 ### Web 服务 / 源码运行（全平台）
 
