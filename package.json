@@ -172,13 +172,7 @@
           ]
         }
       ],
-      "artifactName": "jianji-${version}-linux-${arch}.${ext}",
-      "desktop": {
-        "Name": "简记",
-        "Comment": "本地优先的 Markdown 笔记与待办",
-        "Categories": "Office;Utility;"
-      },
-      "synopsis": "本地优先的 Markdown 笔记与待办"
+      "artifactName": "jianji-${version}-linux-${arch}.${ext}"
     }
   }
 }
