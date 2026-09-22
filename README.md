@@ -26,9 +26,9 @@
 | --- | --- |
 | ![浅色主题](docs/screenshots/01-light-notes.png) | ![深色主题](docs/screenshots/03-dark-notes.png) |
 
-| 待办视图 | 移动端 |
-| --- | --- |
-| ![待办视图](docs/screenshots/02-light-tasks.png) | ![移动端](docs/screenshots/05-mobile-editor.png) |
+| 待办视图 |
+| --- |
+| ![待办视图](docs/screenshots/02-light-tasks.png) |
 
 ## ✨ 特性
 
